@@ -1,0 +1,32 @@
+{
+  "name": "mojo-input-manager",
+  "version": "1.0.0",
+  "description": "Set up your controllers once, then choose exactly which ones each game sees.",
+  "main": "src/main/main.js",
+  "scripts": {
+  "start": "electron .",
+  "test": "echo \"Error: no test specified\" && exit 1"
+
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mojouto3/mojo-input-manager.git"
+  },
+  "keywords": [
+    "electron",
+    "simulator",
+    "controller",
+    "vjoy",
+    "hidhide"
+  ],
+  "author": "mojouto3",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/mojouto3/mojo-input-manager/issues"
+  },
+  "homepage": "https://github.com/mojouto3/mojo-input-manager#readme",
+  "devDependencies": {
+    "electron": "^43.2.0"
+  }
+}
