@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
 import { LayoutDashboard, Gamepad2, SlidersHorizontal, ShieldCheck, Settings } from 'lucide-react';
-import logoMark from '../../../assets/icon.svg';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -11,16 +10,8 @@ const NAV_ITEMS = [
 
 export default function Sidebar({ activeView, onNavigate }) {
   return (
-    <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-mim-border bg-mim-surface/80 backdrop-blur-sm">
-      <div className="flex items-center gap-3 px-5 py-6">
-        <img src={logoMark} alt="" className="h-8 w-8" />
-        <div>
-          <p className="text-sm font-bold leading-none text-white">Mojo Input</p>
-          <p className="text-xs leading-none text-mim-muted">Manager</p>
-        </div>
-      </div>
-
-      <nav className="flex flex-1 flex-col gap-1 px-3">
+    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-mim-border bg-mim-surface/80 backdrop-blur-sm">
+      <nav className="flex flex-1 flex-col gap-1 px-3 pt-4">
         {NAV_ITEMS.map((item) => {
           const isActive = activeView === item.id;
           const Icon = item.icon;
