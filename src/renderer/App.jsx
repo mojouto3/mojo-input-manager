@@ -6,10 +6,10 @@ import AmbientBackground from './components/AmbientBackground';
 import SplashScreen from './components/SplashScreen';
 import Dashboard from './views/Dashboard';
 import VirtualDevices from './views/VirtualDevices';
+import Mapping from './views/Mapping';
 import ComingSoon from './views/ComingSoon';
 
 const VIEW_TITLES = {
-  mapping: 'Mapping',
   'device-filtering': 'Device Filtering',
   settings: 'Settings'
 };
@@ -44,6 +44,8 @@ export default function App() {
                 <Dashboard onNavigate={setActiveView} />
               ) : activeView === 'virtual-devices' ? (
                 <VirtualDevices />
+              ) : activeView === 'mapping' ? (
+                <Mapping />
               ) : (
                 <ComingSoon title={VIEW_TITLES[activeView]} />
               )}
