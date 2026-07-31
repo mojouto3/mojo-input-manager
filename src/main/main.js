@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('path');
 const isDev = !app.isPackaged;
 const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.ico');
@@ -9,7 +9,9 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
-    autoHideMenuBar: true,
+    minWidth: 720,
+    minHeight: 480,
+    frame: false,
     icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
@@ -18,6 +20,9 @@ function createWindow() {
     }
   });
 
+  mainWindow.on('maximize', () => mainWindow.webContents.send('window:maximized-change', true));
+  mainWindow.on('unmaximize', () => mainWindow.webContents.send('window:maximized-change', false));
+
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
@@ -25,6 +30,27 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '..', '..', 'dist', 'renderer', 'index.html'));
   }
 }
+
+ipcMain.on('window:minimize', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.minimize();
+});
+
+ipcMain.on('window:toggle-maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win?.isMaximized()) {
+    win.unmaximize();
+  } else {
+    win?.maximize();
+  }
+});
+
+ipcMain.on('window:close', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
+});
+
+ipcMain.handle('window:is-maximized', (event) => {
+  return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
+});
 
 app.whenReady().then(() => {
   createWindow();
