@@ -5,10 +5,27 @@
   --color-mim-cyan: #3ddce8;
   --color-mim-bg: #181818;
   --color-mim-surface: #222222;
+  --color-mim-surface-light: #2a2a2a;
+  --color-mim-border: #333333;
+  --color-mim-muted: #8a8a8a;
 }
 
 body {
   margin: 0;
   background-color: var(--color-mim-bg);
   font-family: system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-mim-border);
+  border-radius: 4px;
 }

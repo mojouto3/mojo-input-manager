@@ -1,40 +1,42 @@
-import { motion } from 'framer-motion';
-import logoMark from '../../assets/logo-mark-green.svg';
+import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import Sidebar from './components/Sidebar';
+import AmbientBackground from './components/AmbientBackground';
+import Dashboard from './views/Dashboard';
+import ComingSoon from './views/ComingSoon';
+
+const VIEW_TITLES = {
+  'virtual-devices': 'Virtual Devices',
+  mapping: 'Mapping',
+  'device-filtering': 'Device Filtering',
+  settings: 'Settings'
+};
 
 export default function App() {
+  const [activeView, setActiveView] = useState('dashboard');
+
   return (
-    <div className="min-h-screen bg-mim-bg flex items-center justify-center">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="text-center"
-      >
-        <motion.img
-          src={logoMark}
-          alt=""
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="h-40 w-auto mx-auto mb-4"
-        />
-        <motion.h1
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.15 }}
-          className="text-5xl font-bold text-mim-green mb-4"
-        >
-          Mojo Input Manager
-        </motion.h1>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.35 }}
-          className="text-gray-400 text-lg"
-        >
-          Setup wizard coming soon
-        </motion.p>
-      </motion.div>
+    <div className="flex h-screen bg-mim-bg">
+      <AmbientBackground />
+      <Sidebar activeView={activeView} onNavigate={setActiveView} />
+      <main className="relative flex-1 overflow-y-auto px-10 py-10">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeView}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="h-full"
+          >
+            {activeView === 'dashboard' ? (
+              <Dashboard />
+            ) : (
+              <ComingSoon title={VIEW_TITLES[activeView]} />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </main>
     </div>
   );
 }
