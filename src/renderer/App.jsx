@@ -5,10 +5,10 @@ import Sidebar from './components/Sidebar';
 import AmbientBackground from './components/AmbientBackground';
 import SplashScreen from './components/SplashScreen';
 import Dashboard from './views/Dashboard';
+import VirtualDevices from './views/VirtualDevices';
 import ComingSoon from './views/ComingSoon';
 
 const VIEW_TITLES = {
-  'virtual-devices': 'Virtual Devices',
   mapping: 'Mapping',
   'device-filtering': 'Device Filtering',
   settings: 'Settings'
@@ -41,7 +41,9 @@ export default function App() {
               className="h-full"
             >
               {activeView === 'dashboard' ? (
-                <Dashboard />
+                <Dashboard onNavigate={setActiveView} />
+              ) : activeView === 'virtual-devices' ? (
+                <VirtualDevices />
               ) : (
                 <ComingSoon title={VIEW_TITLES[activeView]} />
               )}

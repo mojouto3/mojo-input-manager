@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('path');
+const vjoy = require('./vjoy');
 const isDev = !app.isPackaged;
 const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.ico');
 
@@ -50,6 +51,32 @@ ipcMain.on('window:close', (event) => {
 
 ipcMain.handle('window:is-maximized', (event) => {
   return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
+});
+
+ipcMain.handle('vjoy:get-status', async () => {
+  try {
+    return { ok: true, devices: await vjoy.getStatus() };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('vjoy:create-device', async (event, index) => {
+  try {
+    await vjoy.createDevice(index);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message, cancelled: Boolean(err.cancelled) };
+  }
+});
+
+ipcMain.handle('vjoy:delete-device', async (event, index) => {
+  try {
+    await vjoy.deleteDevice(index);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message, cancelled: Boolean(err.cancelled) };
+  }
 });
 
 app.whenReady().then(() => {
