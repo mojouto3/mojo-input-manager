@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --color-mim-green: #3ddb3d;
+  --color-mim-cyan: #3ddce8;
+  --color-mim-bg: #181818;
+  --color-mim-surface: #222222;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-mim-bg);
+  font-family: system-ui, -apple-system, sans-serif;
+}
