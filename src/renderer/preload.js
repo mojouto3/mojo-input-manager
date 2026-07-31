@@ -12,5 +12,10 @@ contextBridge.exposeInMainWorld('mim', {
       ipcRenderer.on('window:maximized-change', listener);
       return () => ipcRenderer.removeListener('window:maximized-change', listener);
     }
+  },
+  vjoy: {
+    getStatus: () => ipcRenderer.invoke('vjoy:get-status'),
+    createDevice: (index) => ipcRenderer.invoke('vjoy:create-device', index),
+    deleteDevice: (index) => ipcRenderer.invoke('vjoy:delete-device', index)
   }
 });

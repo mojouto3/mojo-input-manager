@@ -9,21 +9,27 @@ const ROADMAP = [
     icon: Gamepad2,
     title: 'Virtual Devices',
     description: 'Create and configure virtual controllers with vJoy.',
-    tone: 'green'
+    tone: 'green',
+    viewId: 'virtual-devices',
+    available: true
   },
   {
     step: 2,
     icon: SlidersHorizontal,
     title: 'Mapping',
     description: 'Map physical devices onto your virtual controllers.',
-    tone: 'green'
+    tone: 'green',
+    viewId: 'mapping',
+    available: false
   },
   {
     step: 3,
     icon: ShieldCheck,
     title: 'Device Filtering',
     description: 'Choose exactly which devices each game can see.',
-    tone: 'cyan'
+    tone: 'cyan',
+    viewId: 'device-filtering',
+    available: false
   }
 ];
 
@@ -37,7 +43,7 @@ const item = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } }
 };
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigate }) {
   return (
     <div className="mx-auto max-w-3xl">
       <motion.div
@@ -53,9 +59,12 @@ export default function Dashboard() {
       </motion.div>
 
       <motion.div variants={container} initial="hidden" animate="show" className="grid gap-4 sm:grid-cols-3">
-        {ROADMAP.map(({ step, icon: Icon, title, description, tone }) => (
+        {ROADMAP.map(({ step, icon: Icon, title, description, tone, viewId, available }) => (
           <motion.div key={title} variants={item}>
-            <Card className="flex h-full flex-col gap-3 p-5">
+            <Card
+              onClick={available ? () => onNavigate(viewId) : undefined}
+              className={`flex h-full flex-col gap-3 p-5 ${available ? 'cursor-pointer' : ''}`}
+            >
               <div className="flex items-center justify-between">
                 <div
                   className={`flex h-10 w-10 items-center justify-center rounded-lg ${
@@ -71,7 +80,7 @@ export default function Dashboard() {
                 <p className="mt-1 text-sm text-mim-muted">{description}</p>
               </div>
               <div className="mt-auto pt-2">
-                <Badge tone="muted">Coming soon</Badge>
+                <Badge tone={available ? 'green' : 'muted'}>{available ? 'Available' : 'Coming soon'}</Badge>
               </div>
             </Card>
           </motion.div>
