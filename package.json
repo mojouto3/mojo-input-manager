@@ -4,13 +4,13 @@
   "description": "Set up your controllers once, then choose exactly which ones each game sees.",
   "main": "src/main/main.js",
   "scripts": {
-  "dev:vite": "vite",
-  "dev:electron": "wait-on http://localhost:5173 && electron .",
-  "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
-  "build": "vite build",
-  "start": "electron .",
-  "test": "echo \"Error: no test specified\" && exit 1"
-},
+    "dev:vite": "vite",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
+    "build": "vite build",
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mojouto3/mojo-input-manager.git"
@@ -42,6 +42,7 @@
     "wait-on": "^9.1.0"
   },
   "dependencies": {
+    "lucide-react": "^1.28.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   }
