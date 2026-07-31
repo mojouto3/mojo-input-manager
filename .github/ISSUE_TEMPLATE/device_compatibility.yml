@@ -1,0 +1,60 @@
+name: Device compatibility report
+description: Report how well a specific controller, wheel, pedal set, or other peripheral works with the app
+title: "[Device]: "
+labels: ["device-detection"]
+body:
+  - type: input
+    id: device-name
+    attributes:
+      label: Device name and model
+      placeholder: e.g. VKB Gunfighter MkIII, Moza R9 base, Moza SR-P pedals
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection type
+      options:
+        - USB
+        - Bluetooth
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: detection
+    attributes:
+      label: Was the device detected correctly?
+      options:
+        - "Yes, fully"
+        - "Partially, some axes or buttons missing"
+        - "No, not detected at all"
+    validations:
+      required: true
+  - type: dropdown
+    id: mapping
+    attributes:
+      label: Did mapping to a virtual device work correctly?
+      options:
+        - "Yes"
+        - "Partially"
+        - "No"
+        - "Did not test"
+    validations:
+      required: true
+  - type: dropdown
+    id: filtering
+    attributes:
+      label: Did per-game visibility filtering work correctly for this device?
+      options:
+        - "Yes"
+        - "No"
+        - "Did not test"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Any quirks, workarounds, or details that could help other users with the same device
+    validations:
+      required: false
