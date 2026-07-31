@@ -20,7 +20,7 @@ const ROADMAP = [
     description: 'Map physical devices onto your virtual controllers.',
     tone: 'green',
     viewId: 'mapping',
-    available: false
+    available: true
   },
   {
     step: 3,
