@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
 import AmbientBackground from './components/AmbientBackground';
+import SplashScreen from './components/SplashScreen';
 import Dashboard from './views/Dashboard';
 import ComingSoon from './views/ComingSoon';
 
@@ -15,9 +16,16 @@ const VIEW_TITLES = {
 
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
+  const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 1200);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div className="flex h-screen flex-col bg-mim-bg">
+      <AnimatePresence>{showSplash && <SplashScreen />}</AnimatePresence>
       <AmbientBackground />
       <TitleBar />
       <div className="flex flex-1 overflow-hidden">
