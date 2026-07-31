@@ -1,6 +1,16 @@
 const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('path');
 const vjoy = require('./vjoy');
+const vjoyInterface = require('./vjoyInterface');
+
+let activeMappingDeviceId = null;
+
+function stopActiveMapping() {
+  if (activeMappingDeviceId !== null) {
+    vjoyInterface.relinquish(activeMappingDeviceId);
+    activeMappingDeviceId = null;
+  }
+}
 const isDev = !app.isPackaged;
 const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.ico');
 
@@ -79,6 +89,30 @@ ipcMain.handle('vjoy:delete-device', async (event, index) => {
   }
 });
 
+ipcMain.handle('mapping:start', (event, deviceId) => {
+  if (!vjoyInterface.isAvailable()) {
+    return { ok: false, error: 'vJoy driver is not available.' };
+  }
+  stopActiveMapping();
+  const acquired = vjoyInterface.acquire(deviceId);
+  if (!acquired) {
+    return { ok: false, error: `Device ${deviceId} could not be acquired (it may be in use by another app).` };
+  }
+  activeMappingDeviceId = deviceId;
+  return { ok: true };
+});
+
+ipcMain.on('mapping:feed', (event, state) => {
+  if (activeMappingDeviceId !== null) {
+    vjoyInterface.feed(activeMappingDeviceId, state);
+  }
+});
+
+ipcMain.handle('mapping:stop', () => {
+  stopActiveMapping();
+  return { ok: true };
+});
+
 app.whenReady().then(() => {
   createWindow();
 
@@ -90,6 +124,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  stopActiveMapping();
   if (process.platform !== 'darwin') {
     app.quit();
   }

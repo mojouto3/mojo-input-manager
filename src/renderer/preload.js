@@ -17,5 +17,10 @@ contextBridge.exposeInMainWorld('mim', {
     getStatus: () => ipcRenderer.invoke('vjoy:get-status'),
     createDevice: (index) => ipcRenderer.invoke('vjoy:create-device', index),
     deleteDevice: (index) => ipcRenderer.invoke('vjoy:delete-device', index)
+  },
+  mapping: {
+    start: (deviceId) => ipcRenderer.invoke('mapping:start', deviceId),
+    feed: (state) => ipcRenderer.send('mapping:feed', state),
+    stop: () => ipcRenderer.invoke('mapping:stop')
   }
 });
