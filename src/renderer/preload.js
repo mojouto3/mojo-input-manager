@@ -32,5 +32,11 @@ contextBridge.exposeInMainWorld('mim', {
     pickApp: () => ipcRenderer.invoke('hidhide:pick-app'),
     registerApp: (exePath) => ipcRenderer.invoke('hidhide:register-app', exePath),
     unregisterApp: (exePath) => ipcRenderer.invoke('hidhide:unregister-app', exePath)
+  },
+  profiles: {
+    list: () => ipcRenderer.invoke('profiles:list'),
+    create: (data) => ipcRenderer.invoke('profiles:create', data),
+    remove: (id) => ipcRenderer.invoke('profiles:remove', id),
+    apply: (id) => ipcRenderer.invoke('profiles:apply', id)
   }
 });
