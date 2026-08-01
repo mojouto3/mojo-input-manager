@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, Tray, ipcMain, dialog, shell } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const vjoy = require('./vjoy');
 const vjoyInterface = require('./vjoyInterface');
@@ -23,6 +24,10 @@ let tray = null;
 let isQuitting = false;
 
 Menu.setApplicationMenu(null);
+
+autoUpdater.on('error', (err) => {
+  console.error('Auto-update check failed:', err.message);
+});
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -316,6 +321,10 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     createWindow();
     createTray();
+
+    if (app.isPackaged) {
+      autoUpdater.checkForUpdatesAndNotify();
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
