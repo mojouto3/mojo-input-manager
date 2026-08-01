@@ -3,6 +3,7 @@ const path = require('path');
 const vjoy = require('./vjoy');
 const vjoyInterface = require('./vjoyInterface');
 const hidhide = require('./hidhide');
+const profiles = require('./profiles');
 
 let activeMappingDeviceId = null;
 
@@ -185,6 +186,32 @@ ipcMain.handle('hidhide:register-app', async (event, exePath) => {
 ipcMain.handle('hidhide:unregister-app', async (event, exePath) => {
   try {
     await hidhide.unregisterApp(exePath);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('profiles:list', () => {
+  return { ok: true, profiles: profiles.list() };
+});
+
+ipcMain.handle('profiles:create', (event, data) => {
+  try {
+    return { ok: true, profile: profiles.create(data) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('profiles:remove', (event, id) => {
+  profiles.remove(id);
+  return { ok: true };
+});
+
+ipcMain.handle('profiles:apply', async (event, id) => {
+  try {
+    await profiles.apply(id);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };

@@ -1,22 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, ShieldCheck, EyeOff, Eye, Plus, X } from 'lucide-react';
+import { RefreshCw, ShieldCheck, EyeOff, Eye, Plus, X, Play, Trash2 } from 'lucide-react';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
 
 const hidhide = typeof window !== 'undefined' ? window.mim?.hidhide : undefined;
+const profilesApi = typeof window !== 'undefined' ? window.mim?.profiles : undefined;
 
 export default function DeviceFiltering() {
   const [devices, setDevices] = useState([]);
   const [apps, setApps] = useState([]);
+  const [profiles, setProfiles] = useState([]);
   const [cloakEnabled, setCloakEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [busyPath, setBusyPath] = useState(null);
   const [cloakBusy, setCloakBusy] = useState(false);
   const [appBusy, setAppBusy] = useState(false);
+  const [profileBusyId, setProfileBusyId] = useState(null);
   const [notice, setNotice] = useState(null);
+
+  const [showProfileForm, setShowProfileForm] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileAppPath, setProfileAppPath] = useState('');
+  const [profileHiddenPaths, setProfileHiddenPaths] = useState(new Set());
 
   const refresh = useCallback(async () => {
     if (!hidhide) {
@@ -25,7 +33,11 @@ export default function DeviceFiltering() {
       return;
     }
     setLoading(true);
-    const [devicesResult, appsResult] = await Promise.all([hidhide.getDevices(), hidhide.getApps()]);
+    const [devicesResult, appsResult, profilesResult] = await Promise.all([
+      hidhide.getDevices(),
+      hidhide.getApps(),
+      profilesApi.list()
+    ]);
     if (devicesResult.ok) {
       setDevices(devicesResult.devices);
       setCloakEnabled(devicesResult.cloakEnabled);
@@ -35,6 +47,9 @@ export default function DeviceFiltering() {
     }
     if (appsResult.ok) {
       setApps(appsResult.apps);
+    }
+    if (profilesResult.ok) {
+      setProfiles(profilesResult.profiles);
     }
     setLoading(false);
   }, []);
@@ -86,6 +101,61 @@ export default function DeviceFiltering() {
       setNotice({ text: `${exePath}: ${result.error}` });
     }
     setAppBusy(false);
+    refresh();
+  }
+
+  function resetProfileForm() {
+    setShowProfileForm(false);
+    setProfileName('');
+    setProfileAppPath('');
+    setProfileHiddenPaths(new Set());
+  }
+
+  async function handlePickProfileApp() {
+    const picked = await hidhide.pickApp();
+    if (picked.ok) setProfileAppPath(picked.path);
+  }
+
+  function toggleProfileDevice(devicePath) {
+    setProfileHiddenPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(devicePath)) next.delete(devicePath);
+      else next.add(devicePath);
+      return next;
+    });
+  }
+
+  async function handleSaveProfile() {
+    if (!profileName.trim() || !profileAppPath) return;
+    setNotice(null);
+    const result = await profilesApi.create({
+      name: profileName.trim(),
+      appPath: profileAppPath,
+      hiddenDevicePaths: Array.from(profileHiddenPaths)
+    });
+    if (!result.ok) {
+      setNotice({ text: `Profile: ${result.error}` });
+      return;
+    }
+    resetProfileForm();
+    refresh();
+  }
+
+  async function handleApplyProfile(profile) {
+    setProfileBusyId(profile.id);
+    setNotice(null);
+    const result = await profilesApi.apply(profile.id);
+    if (!result.ok) {
+      setNotice({ text: `${profile.name}: ${result.error}` });
+    }
+    setProfileBusyId(null);
+    refresh();
+  }
+
+  async function handleDeleteProfile(profile) {
+    setProfileBusyId(profile.id);
+    await profilesApi.remove(profile.id);
+    setProfileBusyId(null);
     refresh();
   }
 
@@ -218,6 +288,115 @@ export default function DeviceFiltering() {
               </button>
             </Card>
           ))}
+        </div>
+      )}
+
+      <div className="mb-3 mt-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Profiles</h2>
+          <p className="text-xs text-mim-muted">
+            Applying a profile hides the right devices, allows the game, and turns cloaking on.
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          onClick={() => (showProfileForm ? resetProfileForm() : setShowProfileForm(true))}
+          className="flex items-center gap-2"
+        >
+          <Plus size={14} />
+          New Profile
+        </Button>
+      </div>
+
+      {showProfileForm && (
+        <Card hover={false} className="mb-4 flex flex-col gap-4 p-4">
+          <div>
+            <label className="mb-1 block text-xs text-mim-muted">Name</label>
+            <input
+              value={profileName}
+              onChange={(e) => setProfileName(e.target.value)}
+              placeholder="e.g. Racing Sim"
+              className="w-full rounded-md border border-mim-border bg-mim-surface-light px-3 py-2 text-sm text-white outline-none focus:border-mim-green"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-mim-muted">Game application</label>
+            <div className="flex items-center gap-3">
+              <Button variant="secondary" onClick={handlePickProfileApp}>
+                Choose Application
+              </Button>
+              <span className="truncate text-xs text-mim-muted">
+                {profileAppPath || 'No application selected'}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-mim-muted">Devices to hide from other apps</label>
+            <div className="flex flex-col gap-1.5">
+              {devices.map((device) => (
+                <label key={device.path} className="flex items-center gap-2 text-sm text-white">
+                  <input
+                    type="checkbox"
+                    checked={profileHiddenPaths.has(device.path)}
+                    onChange={() => toggleProfileDevice(device.path)}
+                    className="accent-mim-green"
+                  />
+                  {device.name}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={resetProfileForm}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveProfile} disabled={!profileName.trim() || !profileAppPath}>
+              Save Profile
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {profiles.length === 0 ? (
+        <Card hover={false} className="px-6 py-6 text-center text-sm text-mim-muted">
+          No profiles yet.
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {profiles.map((profile) => {
+            const isBusy = profileBusyId === profile.id;
+            return (
+              <Card key={profile.id} hover={false} className="flex items-center justify-between gap-4 p-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-white">{profile.name}</p>
+                  <p className="truncate text-xs text-mim-muted">
+                    {profile.appPath.split('\\').pop()} &middot; {profile.hiddenDevicePaths.length} device(s) hidden
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() => handleApplyProfile(profile)}
+                    disabled={isBusy}
+                    className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-mim-green transition-colors hover:bg-mim-green/10 disabled:opacity-50"
+                  >
+                    <Play size={12} />
+                    {isBusy ? 'Working...' : 'Apply'}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteProfile(profile)}
+                    disabled={isBusy}
+                    className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+                  >
+                    <Trash2 size={12} />
+                    Delete
+                  </button>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
