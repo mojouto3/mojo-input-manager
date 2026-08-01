@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const vjoy = require('./vjoy');
 const vjoyInterface = require('./vjoyInterface');
@@ -146,6 +146,45 @@ ipcMain.handle('hidhide:unhide-device', async (event, devicePath) => {
 ipcMain.handle('hidhide:set-cloak', async (event, enabled) => {
   try {
     await hidhide.setCloak(enabled);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('hidhide:get-apps', async () => {
+  try {
+    return { ok: true, apps: await hidhide.getApps() };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('hidhide:pick-app', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showOpenDialog(win, {
+    title: 'Select an application',
+    properties: ['openFile'],
+    filters: [{ name: 'Applications', extensions: ['exe'] }]
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { ok: false, cancelled: true };
+  }
+  return { ok: true, path: result.filePaths[0] };
+});
+
+ipcMain.handle('hidhide:register-app', async (event, exePath) => {
+  try {
+    await hidhide.registerApp(exePath);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('hidhide:unregister-app', async (event, exePath) => {
+  try {
+    await hidhide.unregisterApp(exePath);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };

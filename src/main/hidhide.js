@@ -56,9 +56,9 @@ function run(args) {
   return result;
 }
 
-function parseHiddenPaths(output) {
+function parseQuotedPaths(output, flag) {
   const paths = [];
-  const regex = /--dev-hide\s+"([^"]+)"/g;
+  const regex = new RegExp(`${flag}\\s+"([^"]+)"`, 'g');
   let match;
   while ((match = regex.exec(output))) {
     paths.push(match[1]);
@@ -70,7 +70,7 @@ async function getDevices() {
   const gamingOutput = await run(['--dev-gaming']);
   const hiddenOutput = await run(['--dev-list']);
   const gaming = JSON.parse(gamingOutput);
-  const hiddenPaths = new Set(parseHiddenPaths(hiddenOutput));
+  const hiddenPaths = new Set(parseQuotedPaths(hiddenOutput, '--dev-hide'));
 
   const devices = [];
   for (const entry of gaming) {
@@ -103,4 +103,26 @@ function setCloak(enabled) {
   return run([enabled ? '--cloak-on' : '--cloak-off']);
 }
 
-module.exports = { getDevices, getCloakState, hideDevice, unhideDevice, setCloak };
+async function getApps() {
+  const output = await run(['--app-list']);
+  return parseQuotedPaths(output, '--app-reg');
+}
+
+function registerApp(exePath) {
+  return run(['--app-reg', exePath]);
+}
+
+function unregisterApp(exePath) {
+  return run(['--app-unreg', exePath]);
+}
+
+module.exports = {
+  getDevices,
+  getCloakState,
+  hideDevice,
+  unhideDevice,
+  setCloak,
+  getApps,
+  registerApp,
+  unregisterApp
+};

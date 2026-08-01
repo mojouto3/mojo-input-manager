@@ -4,9 +4,11 @@ const tones = {
   cyan: 'bg-mim-cyan/10 text-mim-cyan border-mim-cyan/30'
 };
 
-export default function Badge({ children, tone = 'muted' }) {
+export default function Badge({ children, tone = 'muted', className = '' }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${tones[tone]}`}>
+    <span
+      className={`inline-flex items-center justify-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${tones[tone]} ${className}`}
+    >
       {children}
     </span>
   );

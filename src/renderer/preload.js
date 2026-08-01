@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('mim', {
     getDevices: () => ipcRenderer.invoke('hidhide:get-devices'),
     hideDevice: (devicePath) => ipcRenderer.invoke('hidhide:hide-device', devicePath),
     unhideDevice: (devicePath) => ipcRenderer.invoke('hidhide:unhide-device', devicePath),
-    setCloak: (enabled) => ipcRenderer.invoke('hidhide:set-cloak', enabled)
+    setCloak: (enabled) => ipcRenderer.invoke('hidhide:set-cloak', enabled),
+    getApps: () => ipcRenderer.invoke('hidhide:get-apps'),
+    pickApp: () => ipcRenderer.invoke('hidhide:pick-app'),
+    registerApp: (exePath) => ipcRenderer.invoke('hidhide:register-app', exePath),
+    unregisterApp: (exePath) => ipcRenderer.invoke('hidhide:unregister-app', exePath)
   }
 });
