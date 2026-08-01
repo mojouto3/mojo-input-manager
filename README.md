@@ -45,8 +45,10 @@ Built so you set things up once, then forget about it.
 
 ### Mapping
 - Detects connected physical controllers live via the Gamepad API, no extra drivers needed to see them
-- Shows real-time axes and button state for the selected device
-- Forwards a physical device's input onto a chosen vJoy virtual device with a single Start Mapping toggle
+- Shows real-time axes and button state for every selected device
+- Combine multiple physical devices onto a single vJoy virtual device: select more than one, and their axes/buttons are forwarded together as one combined input
+- Remembers which physical device (or combination) was last mapped to which vJoy target, and restores that selection automatically the next time it sees the same devices connected, no need to click through it again
+- Forwards input with a single Start Mapping toggle
 - Automatically excludes vJoy's own virtual devices from the physical device list, so you can't accidentally map a device to itself
 
 ### Device Filtering (HidHide)
@@ -54,6 +56,14 @@ Built so you set things up once, then forget about it.
 - Cloaking on/off master switch, so nothing is hidden from any app until you turn it on
 - Manage the allow list of applications that can still see hidden devices while cloaking is on
 - Save named profiles (a target game + which devices should be hidden) and apply them with one click: hides the right devices, allows the game, and turns cloaking on automatically
+
+### Settings
+- Switch the app's accent color between neon green and electric cyan
+- See the current app version and check for updates on demand
+
+### Runs in the background
+- Minimizes to the system tray instead of closing, with an option to launch at Windows startup
+- Checks for new versions automatically and updates itself in place, no manual reinstall
 
 ---
 
@@ -73,10 +83,13 @@ MIM automates [vJoy](https://sourceforge.net/projects/vjoystick/) and [HidHide](
 Open the tab, click **Add Device** to create the next free vJoy virtual controller, or **Delete** to remove one.
 
 ### Mapping
-Plug in a controller (move a stick or press a button if it doesn't show up right away), pick a target vJoy device from **Forward to**, and click **Start Mapping**.
+Plug in a controller (move a stick or press a button if it doesn't show up right away), select one or more devices to combine, pick a target vJoy device from **Forward to**, and click **Start Mapping**. Next time you launch MIM with the same devices connected, the selection and target come back on their own.
 
 ### Device Filtering
 Hide the physical devices you don't want other apps to see, turn **Cloaking** on, and add any application that should still be allowed to see everything to the **Allowed Applications** list. Save a **Profile** per game to apply the right combination in one click.
+
+### Settings
+Pick your accent color and check the app's version and update status. Closing the main window minimizes MIM to the system tray rather than quitting; use the tray icon's **Quit** option to actually exit, or its **Launch at startup** checkbox to have MIM start with Windows.
 
 ---
 
@@ -111,14 +124,16 @@ mojo-input-manager/
 ├── assets/                    Icons, logos, social preview
 ├── src/
 │   ├── main/
-│   │   ├── main.js             Electron main process, window, IPC
+│   │   ├── main.js             Electron main process, window, tray, IPC, auto-updater
 │   │   ├── vjoy.js              vJoyConfig.exe wrapper (create/delete, elevated)
 │   │   ├── vjoyInterface.js     vJoyInterface.dll wrapper via koffi (live feed)
 │   │   ├── hidhide.js           HidHideCLI.exe wrapper (devices, cloak, apps)
-│   │   └── profiles.js          Per-game device filtering profiles
+│   │   ├── profiles.js          Per-game device filtering profiles
+│   │   └── mappingProfiles.js   Remembered physical-device-to-vJoy mappings
 │   └── renderer/
 │       ├── components/          Shared UI: Card, Button, Badge, Toggle, Tabs, Sidebar...
-│       └── views/                Dashboard, VirtualDevices, Mapping, DeviceFiltering
+│       ├── theme.js              Accent theme (green/cyan) persistence
+│       └── views/                Dashboard, VirtualDevices, Mapping, DeviceFiltering, Settings
 └── package.json
 ```
 
