@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('mim', {
   hidhide: {
     getDevices: () => ipcRenderer.invoke('hidhide:get-devices'),
     hideDevice: (devicePath) => ipcRenderer.invoke('hidhide:hide-device', devicePath),
-    unhideDevice: (devicePath) => ipcRenderer.invoke('hidhide:unhide-device', devicePath)
+    unhideDevice: (devicePath) => ipcRenderer.invoke('hidhide:unhide-device', devicePath),
+    setCloak: (enabled) => ipcRenderer.invoke('hidhide:set-cloak', enabled)
   }
 });
