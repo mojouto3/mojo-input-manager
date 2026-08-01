@@ -55,7 +55,11 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // Mapping runs on requestAnimationFrame; Chromium throttles that (and
+      // timers) once the window is hidden, which would silently stall live
+      // mapping the moment MIM is minimized to the tray.
+      backgroundThrottling: false
     }
   });
 
