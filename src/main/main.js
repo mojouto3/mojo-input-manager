@@ -4,6 +4,7 @@ const vjoy = require('./vjoy');
 const vjoyInterface = require('./vjoyInterface');
 const hidhide = require('./hidhide');
 const profiles = require('./profiles');
+const mappingProfiles = require('./mappingProfiles');
 
 let activeMappingDeviceId = null;
 
@@ -234,6 +235,20 @@ ipcMain.handle('system:open-external', (event, url) => {
   if (ALLOWED_EXTERNAL_URLS.includes(url)) {
     shell.openExternal(url);
   }
+});
+
+ipcMain.handle('mapping-profiles:list', () => {
+  return mappingProfiles.list();
+});
+
+ipcMain.handle('mapping-profiles:save', (event, data) => {
+  mappingProfiles.upsert(data);
+  return { ok: true };
+});
+
+ipcMain.handle('mapping-profiles:remove', (event, physicalId) => {
+  mappingProfiles.remove(physicalId);
+  return { ok: true };
 });
 
 app.whenReady().then(() => {

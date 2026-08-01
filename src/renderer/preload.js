@@ -42,5 +42,10 @@ contextBridge.exposeInMainWorld('mim', {
   system: {
     checkDrivers: () => ipcRenderer.invoke('system:check-drivers'),
     openExternal: (url) => ipcRenderer.invoke('system:open-external', url)
+  },
+  mappingProfiles: {
+    list: () => ipcRenderer.invoke('mapping-profiles:list'),
+    save: (data) => ipcRenderer.invoke('mapping-profiles:save', data),
+    remove: (physicalId) => ipcRenderer.invoke('mapping-profiles:remove', physicalId)
   }
 });
