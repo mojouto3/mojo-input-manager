@@ -139,7 +139,7 @@ export default function VirtualDevices() {
             <button
               onClick={() => handleCreate(nextFreeIndex)}
               disabled={busyIndex !== null}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-mim-border p-4 text-mim-muted transition-colors hover:border-mim-green hover:text-mim-green disabled:opacity-50"
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-mim-muted backdrop-blur-sm transition-all hover:border-mim-green/50 hover:text-mim-green hover:shadow-[0_0_16px_rgba(61,219,61,0.15)] disabled:opacity-50"
             >
               <Plus size={20} />
               <span className="text-sm">{busyIndex !== null ? 'Working...' : 'Add Device'}</span>
