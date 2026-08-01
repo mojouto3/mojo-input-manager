@@ -73,7 +73,7 @@ Built so you set things up once, then forget about it.
 2. Download the latest **`Mojo Input Manager Setup X.X.X.exe`**
 3. Run the installer and follow the steps
 
-MIM automates [vJoy](https://sourceforge.net/projects/vjoystick/) and [HidHide](https://github.com/nefarius/HidHide), but doesn't install those drivers for you (yet): make sure both are installed first.
+MIM automates [vJoy](https://sourceforge.net/projects/vjoystick/) and [HidHide](https://github.com/nefarius/HidHide), and if either isn't installed, a banner at the top of the window offers to download and install it for you directly from its official source, no manual download needed.
 
 ---
 
