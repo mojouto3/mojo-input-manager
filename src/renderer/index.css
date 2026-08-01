@@ -3,11 +3,21 @@
 @theme {
   --color-mim-green: #3ddb3d;
   --color-mim-cyan: #3ddce8;
+  --color-mim-accent: #3ddb3d;
+  --color-mim-accent-rgb: 61, 219, 61;
   --color-mim-bg: #181818;
   --color-mim-surface: #222222;
   --color-mim-surface-light: #2a2a2a;
   --color-mim-border: #333333;
   --color-mim-muted: #8a8a8a;
+}
+
+/* mim-green/mim-cyan keep their fixed meaning (status, brand accent colors
+   used side by side); only mim-accent, the decorative chrome color, follows
+   the theme switcher. */
+html[data-theme='cyan'] {
+  --color-mim-accent: var(--color-mim-cyan);
+  --color-mim-accent-rgb: 61, 220, 232;
 }
 
 body {

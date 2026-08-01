@@ -22,11 +22,25 @@ const startHidden = process.argv.includes('--hidden');
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+let updateStatus = app.isPackaged ? { status: 'idle' } : { status: 'unsupported' };
 
 Menu.setApplicationMenu(null);
 
+function setUpdateStatus(status) {
+  updateStatus = status;
+  mainWindow?.webContents.send('updater:status', updateStatus);
+}
+
+autoUpdater.on('checking-for-update', () => setUpdateStatus({ status: 'checking' }));
+autoUpdater.on('update-available', (info) => setUpdateStatus({ status: 'available', version: info.version }));
+autoUpdater.on('update-not-available', () => setUpdateStatus({ status: 'not-available' }));
+autoUpdater.on('download-progress', (progress) =>
+  setUpdateStatus({ status: 'downloading', percent: Math.round(progress.percent) })
+);
+autoUpdater.on('update-downloaded', (info) => setUpdateStatus({ status: 'downloaded', version: info.version }));
 autoUpdater.on('error', (err) => {
   console.error('Auto-update check failed:', err.message);
+  setUpdateStatus({ status: 'error', message: err.message });
 });
 
 function createWindow() {
@@ -295,6 +309,16 @@ const ALLOWED_EXTERNAL_URLS = [
 ipcMain.handle('system:open-external', (event, url) => {
   if (ALLOWED_EXTERNAL_URLS.includes(url)) {
     shell.openExternal(url);
+  }
+});
+
+ipcMain.handle('system:get-app-version', () => app.getVersion());
+
+ipcMain.handle('system:get-update-status', () => updateStatus);
+
+ipcMain.handle('system:check-for-updates', () => {
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdates();
   }
 });
 

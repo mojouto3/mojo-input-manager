@@ -331,7 +331,7 @@ export default function DeviceFiltering() {
                           value={profileName}
                           onChange={(e) => setProfileName(e.target.value)}
                           placeholder="e.g. Racing Sim"
-                          className="glass-surface w-full rounded-md px-3 py-2 text-sm text-white outline-none focus:border-mim-green"
+                          className="glass-surface w-full rounded-md px-3 py-2 text-sm text-white outline-none focus:border-mim-accent"
                         />
                       </div>
 
@@ -356,7 +356,7 @@ export default function DeviceFiltering() {
                                 type="checkbox"
                                 checked={profileHiddenPaths.has(device.path)}
                                 onChange={() => toggleProfileDevice(device.path)}
-                                className="accent-mim-green"
+                                className="accent-mim-accent"
                               />
                               {device.name}
                             </label>

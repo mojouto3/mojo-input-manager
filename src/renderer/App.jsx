@@ -9,11 +9,7 @@ import Dashboard from './views/Dashboard';
 import VirtualDevices from './views/VirtualDevices';
 import Mapping from './views/Mapping';
 import DeviceFiltering from './views/DeviceFiltering';
-import ComingSoon from './views/ComingSoon';
-
-const VIEW_TITLES = {
-  settings: 'Settings'
-};
+import Settings from './views/Settings';
 
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
@@ -51,7 +47,7 @@ export default function App() {
               ) : activeView === 'device-filtering' ? (
                 <DeviceFiltering />
               ) : (
-                <ComingSoon title={VIEW_TITLES[activeView]} />
+                <Settings />
               )}
             </motion.div>
           </AnimatePresence>

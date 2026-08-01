@@ -28,11 +28,11 @@ function NavButton({ isActive, icon: Icon, label, collapsed, onClick }) {
       {isActive && (
         <motion.div
           layoutId="sidebar-active"
-          className="absolute inset-0 rounded-lg bg-mim-green/10 border border-mim-green/30"
+          className="absolute inset-0 rounded-lg bg-mim-accent/10 border border-mim-accent/30"
           transition={{ type: 'spring', stiffness: 400, damping: 35 }}
         />
       )}
-      <Icon size={18} className={`relative z-10 shrink-0 ${isActive ? 'text-mim-green' : 'text-mim-muted'}`} />
+      <Icon size={18} className={`relative z-10 shrink-0 ${isActive ? 'text-mim-accent' : 'text-mim-muted'}`} />
       <AnimatePresence>
         {!collapsed && (
           <motion.span

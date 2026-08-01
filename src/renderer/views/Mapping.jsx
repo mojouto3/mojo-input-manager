@@ -239,7 +239,7 @@ export default function Mapping() {
                     disabled={isLive}
                     className={`rounded-lg px-3 py-2.5 text-left text-sm transition-all disabled:opacity-50 ${
                       isChecked
-                        ? 'border border-mim-green/30 bg-mim-green/10 text-white shadow-[0_0_10px_rgba(61,219,61,0.15)]'
+                        ? 'border border-mim-accent/30 bg-mim-accent/10 text-white shadow-[0_0_10px_rgba(var(--color-mim-accent-rgb),0.15)]'
                         : 'glass-surface text-mim-muted hover:text-white'
                     }`}
                   >
@@ -267,7 +267,7 @@ export default function Mapping() {
                           <span className="w-8 text-xs text-mim-muted">{AXIS_NAMES[i] ?? `A${i}`}</span>
                           <div className="h-2 flex-1 overflow-hidden rounded-full bg-mim-surface-light">
                             <motion.div
-                              className="h-full bg-mim-green"
+                              className="h-full bg-mim-accent"
                               animate={{ width: `${((value + 1) / 2) * 100}%` }}
                               transition={{ duration: 0.05 }}
                             />
@@ -284,7 +284,7 @@ export default function Mapping() {
                           key={i}
                           className={`flex h-8 w-8 items-center justify-center rounded-md border text-xs font-medium transition-colors ${
                             button.pressed
-                              ? 'border-mim-green bg-mim-green/20 text-mim-green'
+                              ? 'border-mim-accent bg-mim-accent/20 text-mim-accent'
                               : 'border-mim-border text-mim-muted'
                           }`}
                         >

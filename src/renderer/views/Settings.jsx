@@ -1,0 +1,107 @@
+import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Palette, Info, RefreshCw } from 'lucide-react';
+import Card from '../components/Card';
+import { getTheme, setTheme } from '../theme';
+
+const mim = typeof window !== 'undefined' ? window.mim : undefined;
+
+const THEMES = [
+  { id: 'green', label: 'Neon Green', swatch: '#3ddb3d' },
+  { id: 'cyan', label: 'Electric Cyan', swatch: '#3ddce8' }
+];
+
+const STATUS_LABEL = {
+  idle: 'Not checked yet',
+  checking: 'Checking for updates...',
+  available: 'Update available, downloading...',
+  'not-available': 'Up to date',
+  downloading: 'Downloading update...',
+  downloaded: 'Update ready, restart to install',
+  error: 'Update check failed',
+  unsupported: 'Only available in installed builds'
+};
+
+export default function Settings() {
+  const [theme, setThemeState] = useState(getTheme());
+  const [version, setVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState({ status: 'idle' });
+
+  useEffect(() => {
+    mim?.system?.getAppVersion().then(setVersion);
+    mim?.system?.getUpdateStatus().then(setUpdateStatus);
+    return mim?.system?.onUpdateStatus(setUpdateStatus);
+  }, []);
+
+  function chooseTheme(id) {
+    setTheme(id);
+    setThemeState(id);
+  }
+
+  const statusLabel = STATUS_LABEL[updateStatus.status] ?? updateStatus.status;
+  const isBusy = updateStatus.status === 'checking' || updateStatus.status === 'downloading';
+  const checkDisabled = isBusy || updateStatus.status === 'unsupported';
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white">Settings</h1>
+        <p className="mt-1 text-sm text-mim-muted">Appearance and app info.</p>
+      </div>
+
+      <Card hover={false} className="mb-4 p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Palette size={16} className="text-mim-muted" />
+          <h2 className="text-sm font-semibold text-white">Appearance</h2>
+        </div>
+        <div className="flex gap-3">
+          {THEMES.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => chooseTheme(t.id)}
+              className={`flex flex-1 items-center gap-3 rounded-lg px-4 py-3 text-left text-sm transition-all ${
+                theme === t.id
+                  ? 'border border-mim-accent/30 bg-mim-accent/10 text-white shadow-[0_0_10px_rgba(var(--color-mim-accent-rgb),0.15)]'
+                  : 'glass-surface text-mim-muted hover:text-white'
+              }`}
+            >
+              <span
+                className="h-4 w-4 shrink-0 rounded-full"
+                style={{ backgroundColor: t.swatch, boxShadow: `0 0 8px ${t.swatch}` }}
+              />
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card hover={false} className="p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Info size={16} className="text-mim-muted" />
+          <h2 className="text-sm font-semibold text-white">About</h2>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm text-white">Mojo Input Manager{version && ` v${version}`}</p>
+            <p className="mt-1 text-xs text-mim-muted">
+              {statusLabel}
+              {updateStatus.status === 'downloading' && typeof updateStatus.percent === 'number'
+                ? ` (${updateStatus.percent}%)`
+                : ''}
+            </p>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => mim?.system?.checkForUpdates()}
+            disabled={checkDisabled}
+            className="glass-surface flex h-9 shrink-0 items-center gap-1.5 rounded-full px-4 text-xs font-semibold text-white transition-shadow disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={updateStatus.status === 'checking' ? 'animate-spin' : ''} />
+            Check for Updates
+          </motion.button>
+        </div>
+      </Card>
+    </div>
+  );
+}

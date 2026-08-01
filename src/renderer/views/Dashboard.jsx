@@ -53,7 +53,7 @@ export default function Dashboard({ onNavigate }) {
         className="mb-10"
       >
         <h1
-          className="bg-[linear-gradient(135deg,#ffffff,#3ddb3d)] bg-clip-text text-3xl font-bold tracking-tight text-transparent"
+          className="bg-[linear-gradient(135deg,#ffffff,var(--color-mim-accent))] bg-clip-text text-3xl font-bold tracking-tight text-transparent"
         >
           Welcome back
         </h1>
