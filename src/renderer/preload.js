@@ -22,5 +22,10 @@ contextBridge.exposeInMainWorld('mim', {
     start: (deviceId) => ipcRenderer.invoke('mapping:start', deviceId),
     feed: (state) => ipcRenderer.send('mapping:feed', state),
     stop: () => ipcRenderer.invoke('mapping:stop')
+  },
+  hidhide: {
+    getDevices: () => ipcRenderer.invoke('hidhide:get-devices'),
+    hideDevice: (devicePath) => ipcRenderer.invoke('hidhide:hide-device', devicePath),
+    unhideDevice: (devicePath) => ipcRenderer.invoke('hidhide:unhide-device', devicePath)
   }
 });
