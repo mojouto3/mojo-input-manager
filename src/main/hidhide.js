@@ -117,6 +117,7 @@ function unregisterApp(exePath) {
 }
 
 module.exports = {
+  findCli,
   getDevices,
   getCloakState,
   hideDevice,
