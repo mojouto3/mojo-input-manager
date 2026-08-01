@@ -4,7 +4,7 @@ export default function AmbientBackground() {
   return (
     <div className="pointer-events-none fixed inset-0 overflow-hidden">
       <motion.div
-        className="absolute -top-40 -left-32 h-[28rem] w-[28rem] rounded-full bg-mim-green/25 blur-3xl"
+        className="absolute -top-40 -left-32 h-[28rem] w-[28rem] rounded-full bg-mim-accent/25 blur-3xl"
         animate={{ x: [0, 40, 0], y: [0, 30, 0] }}
         transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
       />

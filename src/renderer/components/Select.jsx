@@ -73,7 +73,7 @@ export default function Select({ value, onChange, options, placeholder = 'Select
                     }}
                     className={`block w-full whitespace-nowrap px-3 py-2 text-left text-sm transition-colors ${
                       String(option.value) === String(value)
-                        ? 'bg-mim-green/10 text-mim-green'
+                        ? 'bg-mim-accent/10 text-mim-accent'
                         : 'text-white hover:bg-white/5'
                     }`}
                   >

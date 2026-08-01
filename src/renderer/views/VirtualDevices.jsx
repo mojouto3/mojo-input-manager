@@ -120,7 +120,7 @@ export default function VirtualDevices() {
 
             return (
               <Card key={device.index} hover={false} className="flex flex-col items-center gap-2 p-4">
-                <Gamepad2 size={20} className="text-mim-green" />
+                <Gamepad2 size={20} className="text-mim-accent" />
                 <span className="text-sm font-medium text-white">Device {device.index}</span>
                 <Badge tone={badge.tone}>{badge.label}</Badge>
                 <button
@@ -139,7 +139,7 @@ export default function VirtualDevices() {
             <button
               onClick={() => handleCreate(nextFreeIndex)}
               disabled={busyIndex !== null}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-mim-muted backdrop-blur-sm transition-all hover:border-mim-green/50 hover:text-mim-green hover:shadow-[0_0_16px_rgba(61,219,61,0.15)] disabled:opacity-50"
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-mim-muted backdrop-blur-sm transition-all hover:border-mim-accent/50 hover:text-mim-accent hover:shadow-[0_0_16px_rgba(var(--color-mim-accent-rgb),0.15)] disabled:opacity-50"
             >
               <Plus size={20} />
               <span className="text-sm">{busyIndex !== null ? 'Working...' : 'Add Device'}</span>

@@ -41,7 +41,15 @@ contextBridge.exposeInMainWorld('mim', {
   },
   system: {
     checkDrivers: () => ipcRenderer.invoke('system:check-drivers'),
-    openExternal: (url) => ipcRenderer.invoke('system:open-external', url)
+    openExternal: (url) => ipcRenderer.invoke('system:open-external', url),
+    getAppVersion: () => ipcRenderer.invoke('system:get-app-version'),
+    getUpdateStatus: () => ipcRenderer.invoke('system:get-update-status'),
+    checkForUpdates: () => ipcRenderer.invoke('system:check-for-updates'),
+    onUpdateStatus: (callback) => {
+      const listener = (_event, status) => callback(status);
+      ipcRenderer.on('updater:status', listener);
+      return () => ipcRenderer.removeListener('updater:status', listener);
+    }
   },
   mappingProfiles: {
     list: () => ipcRenderer.invoke('mapping-profiles:list'),
