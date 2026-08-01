@@ -246,8 +246,8 @@ ipcMain.handle('mapping-profiles:save', (event, data) => {
   return { ok: true };
 });
 
-ipcMain.handle('mapping-profiles:remove', (event, physicalId) => {
-  mappingProfiles.remove(physicalId);
+ipcMain.handle('mapping-profiles:remove', (event, physicalIds) => {
+  mappingProfiles.remove(physicalIds);
   return { ok: true };
 });
 

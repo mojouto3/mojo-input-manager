@@ -6,9 +6,21 @@ function storePath() {
   return path.join(app.getPath('userData'), 'mapping-profiles.json');
 }
 
+function normalize(entry) {
+  // Older versions stored a single `physicalId` per entry. Normalize those to
+  // the current physicalIds[] shape so existing saved mappings keep working.
+  const physicalIds = entry.physicalIds ?? (entry.physicalId ? [entry.physicalId] : []);
+  return { physicalIds, targetDeviceId: entry.targetDeviceId };
+}
+
+function key(physicalIds) {
+  return [...physicalIds].sort().join('|');
+}
+
 function load() {
   try {
-    return JSON.parse(fs.readFileSync(storePath(), 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(storePath(), 'utf8'));
+    return raw.map(normalize);
   } catch {
     return [];
   }
@@ -22,17 +34,17 @@ function list() {
   return load();
 }
 
-// Keyed by the Gamepad API's id string, which is stable per device model
-// across app restarts (unlike the numeric index, which depends on connection
-// order). One remembered target per physical device: saving again overwrites.
-function upsert({ physicalId, physicalName, targetDeviceId }) {
-  const profiles = load().filter((p) => p.physicalId !== physicalId);
-  profiles.push({ physicalId, physicalName, targetDeviceId });
+// Keyed by the set of Gamepad API id strings (stable across restarts, unlike
+// the numeric index). One remembered target per device combination: saving
+// again with the same set of devices overwrites the previous entry.
+function upsert({ physicalIds, targetDeviceId }) {
+  const profiles = load().filter((p) => key(p.physicalIds) !== key(physicalIds));
+  profiles.push({ physicalIds, targetDeviceId });
   save(profiles);
 }
 
-function remove(physicalId) {
-  save(load().filter((p) => p.physicalId !== physicalId));
+function remove(physicalIds) {
+  save(load().filter((p) => key(p.physicalIds) !== key(physicalIds)));
 }
 
 module.exports = { list, upsert, remove };

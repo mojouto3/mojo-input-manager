@@ -46,6 +46,6 @@ contextBridge.exposeInMainWorld('mim', {
   mappingProfiles: {
     list: () => ipcRenderer.invoke('mapping-profiles:list'),
     save: (data) => ipcRenderer.invoke('mapping-profiles:save', data),
-    remove: (physicalId) => ipcRenderer.invoke('mapping-profiles:remove', physicalId)
+    remove: (physicalIds) => ipcRenderer.invoke('mapping-profiles:remove', physicalIds)
   }
 });

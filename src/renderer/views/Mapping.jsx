@@ -16,6 +16,10 @@ const VJOY_ID_PATTERN = /vjoy|1234.*bead/i;
 // Matches the axis order vjoyInterface.js feeds to vJoy (X, Y, Z, RX, RY, RZ, SL0, SL1).
 const AXIS_NAMES = ['X', 'Y', 'Z', 'Rx', 'Ry', 'Rz', 'Sl0', 'Sl1'];
 
+function sameSet(a, b) {
+  return a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|');
+}
+
 function readGamepads() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   return Array.from(pads)
@@ -36,6 +40,7 @@ export default function Mapping() {
   const isLiveRef = useRef(false);
   const targetDeviceRef = useRef('');
   const selectedIdsRef = useRef([]);
+  const autoRestoredRef = useRef(false);
 
   useEffect(() => {
     selectedIdsRef.current = selectedIds;
@@ -90,26 +95,40 @@ export default function Mapping() {
   const selectedDevices = selectedIds.map((id) => devices.find((d) => d.id === id)).filter(Boolean);
   const totalAxes = selectedDevices.reduce((sum, d) => sum + d.axes.length, 0);
 
+  // Auto-select whichever saved device combination is fully connected, once,
+  // so a remembered mapping doesn't require re-clicking the device by hand.
+  // This only restores the selection (and, via the effect below, the target
+  // device) - it never starts mapping on its own.
+  useEffect(() => {
+    if (autoRestoredRef.current || devices.length === 0 || savedMappings.length === 0) return;
+    const connectedIds = devices.map((d) => d.id);
+    const match = savedMappings.find((m) => m.physicalIds.every((id) => connectedIds.includes(id)));
+    if (match) {
+      setSelectedIds(match.physicalIds);
+    }
+    autoRestoredRef.current = true;
+  }, [devices, savedMappings]);
+
   function toggleDevice(id) {
     if (isLive) return;
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  // Pre-fill the last remembered target when exactly one device is selected,
-  // so the common single-device case doesn't require re-picking it every time.
+  // Pre-fill the last remembered target for the current combination of
+  // selected devices, so the same set doesn't need re-picking every time.
   useEffect(() => {
-    if (isLive || selectedDevices.length !== 1) {
+    if (isLive || selectedIds.length === 0) {
       setRemembered(false);
       return;
     }
-    const saved = savedMappings.find((m) => m.physicalId === selectedDevices[0].id);
+    const saved = savedMappings.find((m) => sameSet(m.physicalIds, selectedIds));
     if (saved && vjoyDevices.some((d) => String(d.index) === String(saved.targetDeviceId))) {
       setTargetDeviceId(String(saved.targetDeviceId));
       setRemembered(true);
     } else {
       setRemembered(false);
     }
-  }, [selectedDevices[0]?.id, selectedDevices.length, vjoyDevices, isLive]);
+  }, [selectedIds, vjoyDevices, isLive]);
 
   async function handleToggleLive() {
     if (isLive) {
@@ -127,14 +146,8 @@ export default function Mapping() {
       setIsLive(true);
       isLiveRef.current = true;
       targetDeviceRef.current = targetDeviceId;
-      if (selectedDevices.length === 1) {
-        mim.mappingProfiles.save({
-          physicalId: selectedDevices[0].id,
-          physicalName: selectedDevices[0].id.split(' (')[0],
-          targetDeviceId
-        });
-        setSavedMappings(await mim.mappingProfiles.list());
-      }
+      mim.mappingProfiles.save({ physicalIds: selectedIds, targetDeviceId });
+      setSavedMappings(await mim.mappingProfiles.list());
     } else {
       setLiveError(result.error);
     }
