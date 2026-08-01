@@ -6,6 +6,7 @@ import Badge from '../components/Badge';
 import Select from '../components/Select';
 
 const mim = typeof window !== 'undefined' ? window.mim : undefined;
+const MAX_AXES = 8;
 
 // vJoy virtual devices (vendor 1234 / product bead) present themselves as regular
 // HID joysticks too, so the Gamepad API reports them alongside real physical devices.
@@ -24,7 +25,7 @@ function readGamepads() {
 
 export default function Mapping() {
   const [devices, setDevices] = useState([]);
-  const [selectedIndex, setSelectedIndex] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
   const [vjoyDevices, setVjoyDevices] = useState([]);
   const [targetDeviceId, setTargetDeviceId] = useState('');
   const [isLive, setIsLive] = useState(false);
@@ -34,22 +35,27 @@ export default function Mapping() {
   const frameRef = useRef();
   const isLiveRef = useRef(false);
   const targetDeviceRef = useRef('');
-  const selectedIndexRef = useRef(null);
+  const selectedIdsRef = useRef([]);
 
   useEffect(() => {
-    selectedIndexRef.current = selectedIndex;
-  }, [selectedIndex]);
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
 
   useEffect(() => {
     function tick() {
       const pads = readGamepads();
       setDevices(pads);
       if (isLiveRef.current && targetDeviceRef.current) {
-        const active = pads.find((d) => d.index === selectedIndexRef.current) ?? pads[0];
-        if (active) {
+        // Combine every selected device's axes/buttons, in selection order, into
+        // one payload. This is how several physical devices feed a single vJoy
+        // target: each one contributes the next slice of axes/buttons.
+        const active = selectedIdsRef.current
+          .map((id) => pads.find((d) => d.id === id))
+          .filter(Boolean);
+        if (active.length > 0) {
           mim.mapping.feed({
-            axes: active.axes,
-            buttons: active.buttons.map((b) => b.pressed)
+            axes: active.flatMap((d) => d.axes).slice(0, MAX_AXES),
+            buttons: active.flatMap((d) => d.buttons.map((b) => b.pressed))
           });
         }
       }
@@ -81,20 +87,29 @@ export default function Mapping() {
     };
   }, []);
 
-  const selected = devices.find((d) => d.index === selectedIndex) ?? devices[0] ?? null;
+  const selectedDevices = selectedIds.map((id) => devices.find((d) => d.id === id)).filter(Boolean);
+  const totalAxes = selectedDevices.reduce((sum, d) => sum + d.axes.length, 0);
 
-  // Pre-fill the last remembered target for whichever physical device is
-  // currently selected, so the user doesn't have to re-pick it every session.
+  function toggleDevice(id) {
+    if (isLive) return;
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  // Pre-fill the last remembered target when exactly one device is selected,
+  // so the common single-device case doesn't require re-picking it every time.
   useEffect(() => {
-    if (isLive || !selected) return;
-    const saved = savedMappings.find((m) => m.physicalId === selected.id);
+    if (isLive || selectedDevices.length !== 1) {
+      setRemembered(false);
+      return;
+    }
+    const saved = savedMappings.find((m) => m.physicalId === selectedDevices[0].id);
     if (saved && vjoyDevices.some((d) => String(d.index) === String(saved.targetDeviceId))) {
       setTargetDeviceId(String(saved.targetDeviceId));
       setRemembered(true);
     } else {
       setRemembered(false);
     }
-  }, [selected?.id, vjoyDevices, isLive]);
+  }, [selectedDevices[0]?.id, selectedDevices.length, vjoyDevices, isLive]);
 
   async function handleToggleLive() {
     if (isLive) {
@@ -105,19 +120,21 @@ export default function Mapping() {
       refreshVjoyDevices();
       return;
     }
-    if (!targetDeviceId || !selected) return;
+    if (!targetDeviceId || selectedDevices.length === 0) return;
     setLiveError(null);
     const result = await mim.mapping.start(Number(targetDeviceId));
     if (result.ok) {
       setIsLive(true);
       isLiveRef.current = true;
       targetDeviceRef.current = targetDeviceId;
-      mim.mappingProfiles.save({
-        physicalId: selected.id,
-        physicalName: selected.id.split(' (')[0],
-        targetDeviceId
-      });
-      setSavedMappings(await mim.mappingProfiles.list());
+      if (selectedDevices.length === 1) {
+        mim.mappingProfiles.save({
+          physicalId: selectedDevices[0].id,
+          physicalName: selectedDevices[0].id.split(' (')[0],
+          targetDeviceId
+        });
+        setSavedMappings(await mim.mappingProfiles.list());
+      }
     } else {
       setLiveError(result.error);
     }
@@ -128,7 +145,7 @@ export default function Mapping() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Mapping</h1>
         <p className="mt-1 text-sm text-mim-muted">
-          Detected physical devices and their live input. Map one onto a vJoy virtual device to forward its input.
+          Select one or more physical devices to combine onto a single vJoy virtual device.
         </p>
       </div>
 
@@ -172,7 +189,7 @@ export default function Mapping() {
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={handleToggleLive}
-                disabled={!isLive && !targetDeviceId}
+                disabled={!isLive && (!targetDeviceId || selectedDevices.length === 0)}
                 className={`flex h-9 items-center gap-1.5 rounded-full px-4 text-xs font-semibold transition-shadow disabled:opacity-50 ${
                   isLive
                     ? 'glass-surface text-white'
@@ -191,62 +208,81 @@ export default function Mapping() {
             </div>
           )}
 
+          {totalAxes > MAX_AXES && (
+            <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
+              Selected devices have {totalAxes} axes combined, but a vJoy device only accepts {MAX_AXES}. The extra
+              axes will be ignored.
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
             <div className="flex flex-col gap-2">
-              {devices.map((device) => (
-                <button
-                  key={device.index}
-                  onClick={() => setSelectedIndex(device.index)}
-                  className={`rounded-lg px-3 py-2.5 text-left text-sm transition-all ${
-                    selected?.index === device.index
-                      ? 'border border-mim-green/30 bg-mim-green/10 text-white shadow-[0_0_10px_rgba(61,219,61,0.15)]'
-                      : 'glass-surface text-mim-muted hover:text-white'
-                  }`}
-                >
-                  <p className="truncate font-medium">{device.id.split(' (')[0]}</p>
-                  <p className="text-xs text-mim-muted">Device {device.index}</p>
-                </button>
-              ))}
+              {devices.map((device) => {
+                const isChecked = selectedIds.includes(device.id);
+                return (
+                  <button
+                    key={device.id}
+                    onClick={() => toggleDevice(device.id)}
+                    disabled={isLive}
+                    className={`rounded-lg px-3 py-2.5 text-left text-sm transition-all disabled:opacity-50 ${
+                      isChecked
+                        ? 'border border-mim-green/30 bg-mim-green/10 text-white shadow-[0_0_10px_rgba(61,219,61,0.15)]'
+                        : 'glass-surface text-mim-muted hover:text-white'
+                    }`}
+                  >
+                    <p className="truncate font-medium">{device.id.split(' (')[0]}</p>
+                    <p className="text-xs text-mim-muted">{isChecked ? 'Selected' : 'Device ' + device.index}</p>
+                  </button>
+                );
+              })}
             </div>
 
-            {selected && (
-              <Card hover={false} className="p-5">
-                <h3 className="mb-4 truncate text-sm font-semibold text-white">{selected.id}</h3>
+            <div className="flex flex-col gap-4">
+              {selectedDevices.length === 0 ? (
+                <Card hover={false} className="flex flex-col items-center gap-2 px-6 py-10 text-center">
+                  <p className="text-sm text-mim-muted">Select a device on the left to preview its live input.</p>
+                </Card>
+              ) : (
+                selectedDevices.map((device) => (
+                  <Card key={device.id} hover={false} className="p-5">
+                    <h3 className="mb-4 truncate text-sm font-semibold text-white">{device.id}</h3>
 
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-mim-muted">Axes</p>
-                <div className="mb-5 flex flex-col gap-2">
-                  {selected.axes.map((value, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <span className="w-8 text-xs text-mim-muted">{AXIS_NAMES[i] ?? `A${i}`}</span>
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-mim-surface-light">
-                        <motion.div
-                          className="h-full bg-mim-green"
-                          animate={{ width: `${((value + 1) / 2) * 100}%` }}
-                          transition={{ duration: 0.05 }}
-                        />
-                      </div>
-                      <span className="w-12 text-right text-xs text-mim-muted">{value.toFixed(2)}</span>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-mim-muted">Axes</p>
+                    <div className="mb-5 flex flex-col gap-2">
+                      {device.axes.map((value, i) => (
+                        <div key={i} className="flex items-center gap-3">
+                          <span className="w-8 text-xs text-mim-muted">{AXIS_NAMES[i] ?? `A${i}`}</span>
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-mim-surface-light">
+                            <motion.div
+                              className="h-full bg-mim-green"
+                              animate={{ width: `${((value + 1) / 2) * 100}%` }}
+                              transition={{ duration: 0.05 }}
+                            />
+                          </div>
+                          <span className="w-12 text-right text-xs text-mim-muted">{value.toFixed(2)}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
 
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-mim-muted">Buttons</p>
-                <div className="flex flex-wrap gap-2">
-                  {selected.buttons.map((button, i) => (
-                    <div
-                      key={i}
-                      className={`flex h-8 w-8 items-center justify-center rounded-md border text-xs font-medium transition-colors ${
-                        button.pressed
-                          ? 'border-mim-green bg-mim-green/20 text-mim-green'
-                          : 'border-mim-border text-mim-muted'
-                      }`}
-                    >
-                      {i + 1}
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-mim-muted">Buttons</p>
+                    <div className="flex flex-wrap gap-2">
+                      {device.buttons.map((button, i) => (
+                        <div
+                          key={i}
+                          className={`flex h-8 w-8 items-center justify-center rounded-md border text-xs font-medium transition-colors ${
+                            button.pressed
+                              ? 'border-mim-green bg-mim-green/20 text-mim-green'
+                              : 'border-mim-border text-mim-muted'
+                          }`}
+                        >
+                          {i + 1}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </Card>
-            )}
+                  </Card>
+                ))
+              )}
+            </div>
           </div>
         </>
       )}
