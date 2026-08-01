@@ -143,6 +143,15 @@ ipcMain.handle('hidhide:unhide-device', async (event, devicePath) => {
   }
 });
 
+ipcMain.handle('hidhide:set-cloak', async (event, enabled) => {
+  try {
+    await hidhide.setCloak(enabled);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 

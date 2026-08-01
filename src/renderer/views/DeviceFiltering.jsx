@@ -13,6 +13,7 @@ export default function DeviceFiltering() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [busyPath, setBusyPath] = useState(null);
+  const [cloakBusy, setCloakBusy] = useState(false);
   const [notice, setNotice] = useState(null);
 
   const refresh = useCallback(async () => {
@@ -36,6 +37,17 @@ export default function DeviceFiltering() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  async function handleToggleCloak() {
+    setCloakBusy(true);
+    setNotice(null);
+    const result = await hidhide.setCloak(!cloakEnabled);
+    if (!result.ok) {
+      setNotice({ text: `Cloaking: ${result.error}` });
+    }
+    setCloakBusy(false);
+    refresh();
+  }
 
   async function handleToggle(device) {
     setBusyPath(device.path);
@@ -74,16 +86,26 @@ export default function DeviceFiltering() {
         </Button>
       </div>
 
-      <div className="mb-4 flex items-center gap-2">
-        <Badge tone={cloakEnabled ? 'green' : 'muted'}>
-          Cloaking is {cloakEnabled ? 'ON' : 'OFF'}
-        </Badge>
-        {!cloakEnabled && (
-          <span className="text-xs text-mim-muted">
-            Hiding a device below has no effect on other apps yet while cloaking is off.
-          </span>
-        )}
-      </div>
+      <Card hover={false} className="mb-4 flex items-center justify-between gap-4 p-4">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-medium text-white">
+            Cloaking
+            <Badge tone={cloakEnabled ? 'green' : 'muted'}>{cloakEnabled ? 'ON' : 'OFF'}</Badge>
+          </p>
+          <p className="mt-1 text-xs text-mim-muted">
+            {cloakEnabled
+              ? 'Hidden devices below are invisible to every app except those on the allow list.'
+              : 'Hiding a device below has no effect on other apps yet while cloaking is off.'}
+          </p>
+        </div>
+        <Button
+          variant={cloakEnabled ? 'secondary' : 'primary'}
+          onClick={handleToggleCloak}
+          disabled={cloakBusy}
+        >
+          {cloakBusy ? 'Working...' : cloakEnabled ? 'Turn Off' : 'Turn On'}
+        </Button>
+      </Card>
 
       {notice && (
         <motion.div

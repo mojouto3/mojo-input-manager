@@ -77,7 +77,7 @@ async function getDevices() {
     for (const device of entry.devices) {
       devices.push({
         path: device.deviceInstancePath,
-        name: entry.friendlyName.trim(),
+        name: (device.product || entry.friendlyName).trim(),
         present: device.present,
         hidden: hiddenPaths.has(device.deviceInstancePath)
       });
@@ -99,4 +99,8 @@ function unhideDevice(devicePath) {
   return run(['--dev-unhide', devicePath]);
 }
 
-module.exports = { getDevices, getCloakState, hideDevice, unhideDevice };
+function setCloak(enabled) {
+  return run([enabled ? '--cloak-on' : '--cloak-off']);
+}
+
+module.exports = { getDevices, getCloakState, hideDevice, unhideDevice, setCloak };
