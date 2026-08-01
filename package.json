@@ -45,6 +45,7 @@
     "wait-on": "^9.1.0"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "koffi": "^3.1.4",
     "lucide-react": "^1.28.0",
     "react": "^19.2.8",
@@ -71,6 +72,11 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "mojouto3",
+      "repo": "mojo-input-manager"
     }
   }
 }
