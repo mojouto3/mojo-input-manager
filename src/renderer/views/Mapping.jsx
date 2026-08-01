@@ -7,6 +7,11 @@ import Select from '../components/Select';
 
 const mim = typeof window !== 'undefined' ? window.mim : undefined;
 const MAX_AXES = 8;
+// requestAnimationFrame only fires when the window is actually being painted,
+// which Windows stops doing for a truly minimized (not just hidden/tray'd)
+// window. setInterval is a plain timer with no such dependency, so mapping
+// keeps feeding vJoy no matter how the window is put aside.
+const TICK_INTERVAL_MS = 16;
 
 // vJoy virtual devices (vendor 1234 / product bead) present themselves as regular
 // HID joysticks too, so the Gamepad API reports them alongside real physical devices.
@@ -36,7 +41,7 @@ export default function Mapping() {
   const [liveError, setLiveError] = useState(null);
   const [savedMappings, setSavedMappings] = useState([]);
   const [remembered, setRemembered] = useState(false);
-  const frameRef = useRef();
+  const intervalRef = useRef();
   const isLiveRef = useRef(false);
   const targetDeviceRef = useRef('');
   const selectedIdsRef = useRef([]);
@@ -64,10 +69,9 @@ export default function Mapping() {
           });
         }
       }
-      frameRef.current = requestAnimationFrame(tick);
     }
-    frameRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frameRef.current);
+    intervalRef.current = setInterval(tick, TICK_INTERVAL_MS);
+    return () => clearInterval(intervalRef.current);
   }, []);
 
   const refreshVjoyDevices = useCallback(async () => {
