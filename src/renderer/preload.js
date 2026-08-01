@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld('mim', {
     getAppVersion: () => ipcRenderer.invoke('system:get-app-version'),
     getUpdateStatus: () => ipcRenderer.invoke('system:get-update-status'),
     checkForUpdates: () => ipcRenderer.invoke('system:check-for-updates'),
+    getDriverInfo: (key) => ipcRenderer.invoke('system:get-driver-info', key),
+    installDriver: (key) => ipcRenderer.invoke('system:install-driver', key),
     onUpdateStatus: (callback) => {
       const listener = (_event, status) => callback(status);
       ipcRenderer.on('updater:status', listener);

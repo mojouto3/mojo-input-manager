@@ -6,6 +6,7 @@ const vjoyInterface = require('./vjoyInterface');
 const hidhide = require('./hidhide');
 const profiles = require('./profiles');
 const mappingProfiles = require('./mappingProfiles');
+const driverSources = require('./driverSources');
 
 let activeMappingDeviceId = null;
 
@@ -313,6 +314,22 @@ const ALLOWED_EXTERNAL_URLS = [
 ipcMain.handle('system:open-external', (event, url) => {
   if (ALLOWED_EXTERNAL_URLS.includes(url)) {
     shell.openExternal(url);
+  }
+});
+
+ipcMain.handle('system:get-driver-info', async (event, key) => {
+  try {
+    return { ok: true, info: await driverSources.getLatest(key) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('system:install-driver', async (event, key) => {
+  try {
+    return { ok: true, info: await driverSources.downloadAndRun(key) };
+  } catch (err) {
+    return { ok: false, error: err.message };
   }
 });
 

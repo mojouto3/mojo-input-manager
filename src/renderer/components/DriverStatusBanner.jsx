@@ -1,16 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Download, Loader2 } from 'lucide-react';
 
 const system = typeof window !== 'undefined' ? window.mim?.system : undefined;
 
 const DRIVERS = [
-  { key: 'vjoyInstalled', name: 'vJoy', url: 'https://sourceforge.net/projects/vjoystick/' },
-  { key: 'hidhideInstalled', name: 'HidHide', url: 'https://github.com/nefarius/HidHide/releases' }
+  { statusKey: 'vjoyInstalled', sourceKey: 'vjoy', name: 'vJoy', url: 'https://sourceforge.net/projects/vjoystick/' },
+  {
+    statusKey: 'hidhideInstalled',
+    sourceKey: 'hidhide',
+    name: 'HidHide',
+    url: 'https://github.com/nefarius/HidHide/releases'
+  }
 ];
 
 export default function DriverStatusBanner() {
   const [status, setStatus] = useState(null);
+  const [versions, setVersions] = useState({});
+  const [installing, setInstalling] = useState(null);
+  const [installError, setInstallError] = useState(null);
 
   const check = useCallback(async () => {
     if (!system) return;
@@ -24,7 +32,27 @@ export default function DriverStatusBanner() {
     return () => window.removeEventListener('focus', check);
   }, [check]);
 
-  const missing = status ? DRIVERS.filter((d) => !status[d.key]) : [];
+  const missing = status ? DRIVERS.filter((d) => !status[d.statusKey]) : [];
+
+  useEffect(() => {
+    missing.forEach((d) => {
+      if (d.sourceKey in versions) return;
+      system?.getDriverInfo(d.sourceKey).then((result) => {
+        setVersions((v) => ({ ...v, [d.sourceKey]: result.ok ? result.info.version : null }));
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+  async function handleInstall(driver) {
+    setInstalling(driver.sourceKey);
+    setInstallError(null);
+    const result = await system.installDriver(driver.sourceKey);
+    if (!result.ok) {
+      setInstallError(`${driver.name}: ${result.error}`);
+    }
+    setInstalling(null);
+  }
 
   return (
     <AnimatePresence>
@@ -43,18 +71,33 @@ export default function DriverStatusBanner() {
                 features won't work yet.
               </span>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap items-center gap-4">
               {missing.map((d) => (
-                <button
-                  key={d.key}
-                  onClick={() => system.openExternal(d.url)}
-                  className="rounded-md border border-amber-500/40 px-2.5 py-1 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20"
-                >
-                  Download {d.name}
-                </button>
+                <div key={d.sourceKey} className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleInstall(d)}
+                    disabled={installing === d.sourceKey}
+                    className="flex items-center gap-1.5 rounded-md border border-amber-500/40 px-2.5 py-1 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+                  >
+                    {installing === d.sourceKey ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <Download size={12} />
+                    )}
+                    {installing === d.sourceKey ? 'Downloading...' : `Install ${d.name}`}
+                    {versions[d.sourceKey] ? ` (${versions[d.sourceKey]})` : ''}
+                  </button>
+                  <button
+                    onClick={() => system.openExternal(d.url)}
+                    className="text-xs text-amber-300/70 hover:text-amber-300 hover:underline"
+                  >
+                    or open page
+                  </button>
+                </div>
               ))}
             </div>
           </div>
+          {installError && <div className="px-6 pb-2 text-xs text-red-400">{installError}</div>}
         </motion.div>
       )}
     </AnimatePresence>
