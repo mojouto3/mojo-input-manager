@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const vjoy = require('./vjoy');
 const vjoyInterface = require('./vjoyInterface');
@@ -16,16 +16,22 @@ function stopActiveMapping() {
 }
 const isDev = !app.isPackaged;
 const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.ico');
+const startHidden = process.argv.includes('--hidden');
+
+let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 
 Menu.setApplicationMenu(null);
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1000,
     height: 700,
     minWidth: 720,
     minHeight: 480,
     frame: false,
+    show: !startHidden,
     icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, '..', 'renderer', 'preload.js'),
@@ -37,12 +43,62 @@ function createWindow() {
   mainWindow.on('maximize', () => mainWindow.webContents.send('window:maximized-change', true));
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window:maximized-change', false));
 
+  // MIM is meant to stay running in the tray, so the close button hides the
+  // window instead of quitting; only the tray's Quit item actually exits.
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', '..', 'dist', 'renderer', 'index.html'));
   }
+}
+
+function showMainWindow() {
+  if (!mainWindow) return;
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray() {
+  tray = new Tray(iconPath);
+  tray.setToolTip('Mojo Input Manager');
+
+  const rebuildMenu = () => {
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Open Mojo Input Manager', click: showMainWindow },
+      { type: 'separator' },
+      {
+        label: 'Launch at startup',
+        type: 'checkbox',
+        checked: app.getLoginItemSettings().openAtLogin,
+        click: (menuItem) => {
+          app.setLoginItemSettings({
+            openAtLogin: menuItem.checked,
+            args: menuItem.checked ? ['--hidden'] : []
+          });
+          rebuildMenu();
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        }
+      }
+    ]));
+  };
+  rebuildMenu();
+
+  tray.on('click', showMainWindow);
 }
 
 ipcMain.on('window:minimize', (event) => {
@@ -251,19 +307,33 @@ ipcMain.handle('mapping-profiles:remove', (event, physicalIds) => {
   return { ok: true };
 });
 
-app.whenReady().then(() => {
-  createWindow();
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', showMainWindow);
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+  app.whenReady().then(() => {
+    createWindow();
+    createTray();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      } else {
+        showMainWindow();
+      }
+    });
+  });
+
+  app.on('before-quit', () => {
+    isQuitting = true;
+  });
+
+  app.on('window-all-closed', () => {
+    stopActiveMapping();
+    if (process.platform !== 'darwin') {
+      app.quit();
     }
   });
-});
-
-app.on('window-all-closed', () => {
-  stopActiveMapping();
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
+}
