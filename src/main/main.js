@@ -8,13 +8,24 @@ const profiles = require('./profiles');
 const mappingProfiles = require('./mappingProfiles');
 const driverSources = require('./driverSources');
 
-let activeMappingDeviceId = null;
+// Each vJoy target can be fed independently and concurrently (a HOTAS's
+// throttle and stick, or two HOSAS sticks, each mapped to their own target
+// at the same time), so active mappings are tracked as a set of device ids
+// rather than a single one.
+const activeMappingDeviceIds = new Set();
 
-function stopActiveMapping() {
-  if (activeMappingDeviceId !== null) {
-    vjoyInterface.relinquish(activeMappingDeviceId);
-    activeMappingDeviceId = null;
+function stopMapping(deviceId) {
+  if (activeMappingDeviceIds.has(deviceId)) {
+    vjoyInterface.relinquish(deviceId);
+    activeMappingDeviceIds.delete(deviceId);
   }
+}
+
+function stopAllMappings() {
+  for (const deviceId of activeMappingDeviceIds) {
+    vjoyInterface.relinquish(deviceId);
+  }
+  activeMappingDeviceIds.clear();
 }
 const isDev = !app.isPackaged;
 const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.ico');
@@ -176,23 +187,25 @@ ipcMain.handle('mapping:start', (event, deviceId) => {
   if (!vjoyInterface.isAvailable()) {
     return { ok: false, error: 'vJoy driver is not available.' };
   }
-  stopActiveMapping();
+  if (activeMappingDeviceIds.has(deviceId)) {
+    return { ok: true };
+  }
   const acquired = vjoyInterface.acquire(deviceId);
   if (!acquired) {
     return { ok: false, error: `Device ${deviceId} could not be acquired (it may be in use by another app).` };
   }
-  activeMappingDeviceId = deviceId;
+  activeMappingDeviceIds.add(deviceId);
   return { ok: true };
 });
 
-ipcMain.on('mapping:feed', (event, state) => {
-  if (activeMappingDeviceId !== null) {
-    vjoyInterface.feed(activeMappingDeviceId, state);
+ipcMain.on('mapping:feed', (event, { deviceId, axes, buttons }) => {
+  if (activeMappingDeviceIds.has(deviceId)) {
+    vjoyInterface.feed(deviceId, { axes, buttons });
   }
 });
 
-ipcMain.handle('mapping:stop', () => {
-  stopActiveMapping();
+ipcMain.handle('mapping:stop', (event, deviceId) => {
+  stopMapping(deviceId);
   return { ok: true };
 });
 
@@ -385,7 +398,7 @@ if (!gotSingleInstanceLock) {
   });
 
   app.on('window-all-closed', () => {
-    stopActiveMapping();
+    stopAllMappings();
     if (process.platform !== 'darwin') {
       app.quit();
     }
