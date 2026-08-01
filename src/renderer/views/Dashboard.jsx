@@ -29,7 +29,7 @@ const ROADMAP = [
     description: 'Choose exactly which devices each game can see.',
     tone: 'cyan',
     viewId: 'device-filtering',
-    available: false
+    available: true
   }
 ];
 

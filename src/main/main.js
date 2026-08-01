@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('path');
 const vjoy = require('./vjoy');
 const vjoyInterface = require('./vjoyInterface');
+const hidhide = require('./hidhide');
 
 let activeMappingDeviceId = null;
 
@@ -111,6 +112,35 @@ ipcMain.on('mapping:feed', (event, state) => {
 ipcMain.handle('mapping:stop', () => {
   stopActiveMapping();
   return { ok: true };
+});
+
+ipcMain.handle('hidhide:get-devices', async () => {
+  try {
+    // HidHideCLI doesn't handle concurrent invocations well, so these must run one at a time.
+    const devices = await hidhide.getDevices();
+    const cloakEnabled = await hidhide.getCloakState();
+    return { ok: true, devices, cloakEnabled };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('hidhide:hide-device', async (event, devicePath) => {
+  try {
+    await hidhide.hideDevice(devicePath);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('hidhide:unhide-device', async (event, devicePath) => {
+  try {
+    await hidhide.unhideDevice(devicePath);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 app.whenReady().then(() => {
