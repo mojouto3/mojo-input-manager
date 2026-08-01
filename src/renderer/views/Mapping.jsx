@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Gamepad2, Play, Square } from 'lucide-react';
 import Card from '../components/Card';
-import Button from '../components/Button';
 import Badge from '../components/Badge';
+import Select from '../components/Select';
 
 const mim = typeof window !== 'undefined' ? window.mim : undefined;
 
@@ -29,6 +29,8 @@ export default function Mapping() {
   const [targetDeviceId, setTargetDeviceId] = useState('');
   const [isLive, setIsLive] = useState(false);
   const [liveError, setLiveError] = useState(null);
+  const [savedMappings, setSavedMappings] = useState([]);
+  const [remembered, setRemembered] = useState(false);
   const frameRef = useRef();
   const isLiveRef = useRef(false);
   const targetDeviceRef = useRef('');
@@ -70,12 +72,29 @@ export default function Mapping() {
   }, [refreshVjoyDevices]);
 
   useEffect(() => {
+    mim?.mappingProfiles?.list().then((list) => setSavedMappings(list ?? []));
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (isLiveRef.current) mim?.mapping?.stop();
     };
   }, []);
 
   const selected = devices.find((d) => d.index === selectedIndex) ?? devices[0] ?? null;
+
+  // Pre-fill the last remembered target for whichever physical device is
+  // currently selected, so the user doesn't have to re-pick it every session.
+  useEffect(() => {
+    if (isLive || !selected) return;
+    const saved = savedMappings.find((m) => m.physicalId === selected.id);
+    if (saved && vjoyDevices.some((d) => String(d.index) === String(saved.targetDeviceId))) {
+      setTargetDeviceId(String(saved.targetDeviceId));
+      setRemembered(true);
+    } else {
+      setRemembered(false);
+    }
+  }, [selected?.id, vjoyDevices, isLive]);
 
   async function handleToggleLive() {
     if (isLive) {
@@ -86,13 +105,19 @@ export default function Mapping() {
       refreshVjoyDevices();
       return;
     }
-    if (!targetDeviceId) return;
+    if (!targetDeviceId || !selected) return;
     setLiveError(null);
     const result = await mim.mapping.start(Number(targetDeviceId));
     if (result.ok) {
       setIsLive(true);
       isLiveRef.current = true;
       targetDeviceRef.current = targetDeviceId;
+      mim.mappingProfiles.save({
+        physicalId: selected.id,
+        physicalName: selected.id.split(' (')[0],
+        targetDeviceId
+      });
+      setSavedMappings(await mim.mappingProfiles.list());
     } else {
       setLiveError(result.error);
     }
@@ -112,45 +137,52 @@ export default function Mapping() {
           <Gamepad2 size={28} className="text-mim-muted" />
           <p className="text-mim-muted">No physical devices detected yet.</p>
           <p className="text-xs text-mim-muted">
-            Plug in a controller and move a stick or press a button — some devices only appear after their first input.
+            Plug in a controller and move a stick or press a button. Some devices only appear after their first input.
           </p>
         </Card>
       ) : (
         <>
-          <Card hover={false} className="mb-4 flex flex-wrap items-center gap-3 p-4">
-            <span className="text-sm text-mim-muted">Forward to</span>
-            <select
-              value={targetDeviceId}
-              onChange={(e) => setTargetDeviceId(e.target.value)}
-              disabled={isLive}
-              className="glass-surface rounded-md px-2 py-1.5 text-sm text-white disabled:opacity-50"
-            >
-              <option value="">Select vJoy device...</option>
-              {vjoyDevices.map((d) => (
-                <option key={d.index} value={d.index}>
-                  vJoy Device {d.index}
-                </option>
-              ))}
-            </select>
-            <Button
-              onClick={handleToggleLive}
-              disabled={!isLive && !targetDeviceId}
-              variant={isLive ? 'secondary' : 'primary'}
-              className="flex items-center gap-2"
-            >
-              {isLive ? <Square size={14} /> : <Play size={14} />}
-              {isLive ? 'Stop' : 'Start Mapping'}
-            </Button>
-            {isLive && (
-              <Badge tone="green">
-                <motion.span
-                  animate={{ opacity: [1, 0.4, 1] }}
-                  transition={{ duration: 1.4, repeat: Infinity }}
-                  className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-mim-green align-middle"
-                />
-                Live
-              </Badge>
-            )}
+          <Card hover={false} className="mb-4 flex items-center justify-between gap-4 p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm text-mim-muted">Forward to</span>
+              <Select
+                value={targetDeviceId}
+                onChange={(value) => {
+                  setTargetDeviceId(value);
+                  setRemembered(false);
+                }}
+                disabled={isLive}
+                placeholder="Select vJoy device..."
+                options={vjoyDevices.map((d) => ({ value: d.index, label: `vJoy Device ${d.index}` }))}
+              />
+              {remembered && <span className="text-xs text-mim-muted">Remembered from last time</span>}
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              {isLive && (
+                <Badge tone="green">
+                  <motion.span
+                    animate={{ opacity: [1, 0.4, 1] }}
+                    transition={{ duration: 1.4, repeat: Infinity }}
+                    className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-mim-green align-middle"
+                  />
+                  Live
+                </Badge>
+              )}
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleToggleLive}
+                disabled={!isLive && !targetDeviceId}
+                className={`flex h-9 items-center gap-1.5 rounded-full px-4 text-xs font-semibold transition-shadow disabled:opacity-50 ${
+                  isLive
+                    ? 'glass-surface text-white'
+                    : 'bg-[linear-gradient(135deg,#3ddb3d,#28a428)] text-mim-bg shadow-[0_4px_16px_-4px_rgba(61,219,61,0.5)]'
+                }`}
+              >
+                {isLive ? <Square size={13} /> : <Play size={13} />}
+                {isLive ? 'Stop' : 'Start Mapping'}
+              </motion.button>
+            </div>
           </Card>
 
           {liveError && (
