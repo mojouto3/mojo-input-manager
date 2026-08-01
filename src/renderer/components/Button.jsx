@@ -11,7 +11,7 @@ export default function Button({ children, variant = 'primary', className = '', 
       whileHover={{ scale: 1.03 }}
       whileTap={{ scale: 0.97 }}
       transition={{ duration: 0.15 }}
-      className={`rounded-lg px-5 py-2.5 text-sm transition-colors ${variants[variant]} ${className}`}
+      className={`min-w-[132px] justify-center rounded-lg px-5 py-2.5 text-sm transition-colors ${variants[variant]} ${className}`}
       {...props}
     >
       {children}

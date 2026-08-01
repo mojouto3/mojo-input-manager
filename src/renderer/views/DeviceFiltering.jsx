@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, ShieldCheck, EyeOff, Eye } from 'lucide-react';
+import { RefreshCw, ShieldCheck, EyeOff, Eye, Plus, X } from 'lucide-react';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
@@ -9,11 +9,13 @@ const hidhide = typeof window !== 'undefined' ? window.mim?.hidhide : undefined;
 
 export default function DeviceFiltering() {
   const [devices, setDevices] = useState([]);
+  const [apps, setApps] = useState([]);
   const [cloakEnabled, setCloakEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [busyPath, setBusyPath] = useState(null);
   const [cloakBusy, setCloakBusy] = useState(false);
+  const [appBusy, setAppBusy] = useState(false);
   const [notice, setNotice] = useState(null);
 
   const refresh = useCallback(async () => {
@@ -23,13 +25,16 @@ export default function DeviceFiltering() {
       return;
     }
     setLoading(true);
-    const result = await hidhide.getDevices();
-    if (result.ok) {
-      setDevices(result.devices);
-      setCloakEnabled(result.cloakEnabled);
+    const [devicesResult, appsResult] = await Promise.all([hidhide.getDevices(), hidhide.getApps()]);
+    if (devicesResult.ok) {
+      setDevices(devicesResult.devices);
+      setCloakEnabled(devicesResult.cloakEnabled);
       setLoadError(null);
     } else {
-      setLoadError(result.error);
+      setLoadError(devicesResult.error);
+    }
+    if (appsResult.ok) {
+      setApps(appsResult.apps);
     }
     setLoading(false);
   }, []);
@@ -57,6 +62,30 @@ export default function DeviceFiltering() {
       setNotice({ text: `${device.name}: ${result.error}` });
     }
     setBusyPath(null);
+    refresh();
+  }
+
+  async function handleAddApp() {
+    const picked = await hidhide.pickApp();
+    if (!picked.ok) return;
+    setAppBusy(true);
+    setNotice(null);
+    const result = await hidhide.registerApp(picked.path);
+    if (!result.ok) {
+      setNotice({ text: `${picked.path}: ${result.error}` });
+    }
+    setAppBusy(false);
+    refresh();
+  }
+
+  async function handleRemoveApp(exePath) {
+    setAppBusy(true);
+    setNotice(null);
+    const result = await hidhide.unregisterApp(exePath);
+    if (!result.ok) {
+      setNotice({ text: `${exePath}: ${result.error}` });
+    }
+    setAppBusy(false);
     refresh();
   }
 
@@ -134,11 +163,13 @@ export default function DeviceFiltering() {
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   {!device.present && <Badge tone="muted">Not connected</Badge>}
-                  <Badge tone={device.hidden ? 'cyan' : 'green'}>{device.hidden ? 'Hidden' : 'Visible'}</Badge>
+                  <Badge tone={device.hidden ? 'cyan' : 'green'} className="w-16">
+                    {device.hidden ? 'Hidden' : 'Visible'}
+                  </Badge>
                   <button
                     onClick={() => handleToggle(device)}
                     disabled={isBusy}
-                    className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors disabled:opacity-50 ${
+                    className={`flex w-20 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs transition-colors disabled:opacity-50 ${
                       device.hidden
                         ? 'text-mim-green hover:bg-mim-green/10'
                         : 'text-mim-cyan hover:bg-mim-cyan/10'
@@ -151,6 +182,42 @@ export default function DeviceFiltering() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      <div className="mb-3 mt-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Allowed Applications</h2>
+          <p className="text-xs text-mim-muted">These apps can still see hidden devices while cloaking is on.</p>
+        </div>
+        <Button variant="secondary" onClick={handleAddApp} disabled={appBusy} className="flex items-center gap-2">
+          <Plus size={14} />
+          Add Application
+        </Button>
+      </div>
+
+      {apps.length === 0 ? (
+        <Card hover={false} className="px-6 py-6 text-center text-sm text-mim-muted">
+          No applications on the allow list yet.
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {apps.map((exePath) => (
+            <Card key={exePath} hover={false} className="flex items-center justify-between gap-4 p-4">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white">{exePath.split('\\').pop()}</p>
+                <p className="truncate text-xs text-mim-muted">{exePath}</p>
+              </div>
+              <button
+                onClick={() => handleRemoveApp(exePath)}
+                disabled={appBusy}
+                className="flex w-20 shrink-0 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+              >
+                <X size={12} />
+                Remove
+              </button>
+            </Card>
+          ))}
         </div>
       )}
     </div>
