@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const vjoy = require('./vjoy');
 const vjoyInterface = require('./vjoyInterface');
@@ -215,6 +215,24 @@ ipcMain.handle('profiles:apply', async (event, id) => {
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('system:check-drivers', () => {
+  return {
+    vjoyInstalled: Boolean(vjoy.findVJoyConfig()),
+    hidhideInstalled: Boolean(hidhide.findCli())
+  };
+});
+
+const ALLOWED_EXTERNAL_URLS = [
+  'https://sourceforge.net/projects/vjoystick/',
+  'https://github.com/nefarius/HidHide/releases'
+];
+
+ipcMain.handle('system:open-external', (event, url) => {
+  if (ALLOWED_EXTERNAL_URLS.includes(url)) {
+    shell.openExternal(url);
   }
 });
 
