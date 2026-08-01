@@ -9,7 +9,9 @@
     "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
     "build": "vite build",
     "start": "electron .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dist": "npm run build && electron-builder --win",
+    "dist:dir": "npm run build && electron-builder --win --dir"
   },
   "repository": {
     "type": "git",
@@ -35,6 +37,7 @@
     "autoprefixer": "^10.5.4",
     "concurrently": "^10.0.4",
     "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "framer-motion": "^12.43.0",
     "postcss": "^8.5.25",
     "tailwindcss": "^4.3.3",
@@ -46,5 +49,28 @@
     "lucide-react": "^1.28.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
+  },
+  "build": {
+    "appId": "com.mojouto3.mojoinputmanager",
+    "productName": "Mojo Input Manager",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/main/**/*",
+      "src/renderer/preload.js",
+      "dist/renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   }
 }
