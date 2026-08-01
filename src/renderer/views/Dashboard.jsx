@@ -52,7 +52,11 @@ export default function Dashboard({ onNavigate }) {
         transition={{ duration: 0.5 }}
         className="mb-10"
       >
-        <h1 className="text-3xl font-bold text-white">Welcome back</h1>
+        <h1
+          className="bg-[linear-gradient(135deg,#ffffff,#3ddb3d)] bg-clip-text text-3xl font-bold tracking-tight text-transparent"
+        >
+          Welcome back
+        </h1>
         <p className="mt-1 text-mim-muted">
           Set up your controllers once, then choose exactly which ones each game sees.
         </p>

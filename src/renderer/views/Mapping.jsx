@@ -123,7 +123,7 @@ export default function Mapping() {
               value={targetDeviceId}
               onChange={(e) => setTargetDeviceId(e.target.value)}
               disabled={isLive}
-              className="rounded-md border border-mim-border bg-mim-surface-light px-2 py-1.5 text-sm text-white disabled:opacity-50"
+              className="glass-surface rounded-md px-2 py-1.5 text-sm text-white disabled:opacity-50"
             >
               <option value="">Select vJoy device...</option>
               {vjoyDevices.map((d) => (
@@ -165,10 +165,10 @@ export default function Mapping() {
                 <button
                   key={device.index}
                   onClick={() => setSelectedIndex(device.index)}
-                  className={`rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                  className={`rounded-lg px-3 py-2.5 text-left text-sm transition-all ${
                     selected?.index === device.index
-                      ? 'border-mim-green/30 bg-mim-green/10 text-white'
-                      : 'border-mim-border bg-mim-surface/60 text-mim-muted hover:text-white'
+                      ? 'border border-mim-green/30 bg-mim-green/10 text-white shadow-[0_0_10px_rgba(61,219,61,0.15)]'
+                      : 'glass-surface text-mim-muted hover:text-white'
                   }`}
                 >
                   <p className="truncate font-medium">{device.id.split(' (')[0]}</p>

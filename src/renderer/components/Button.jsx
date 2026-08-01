@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion';
 
 const variants = {
-  primary: 'bg-mim-green text-mim-bg font-semibold shadow-[0_0_20px_-4px_var(--color-mim-green)]',
-  secondary: 'bg-mim-surface-light text-white border border-mim-border'
+  primary:
+    'bg-[linear-gradient(135deg,#3ddb3d,#28a428)] text-mim-bg font-semibold shadow-[0_4px_20px_-4px_rgba(61,219,61,0.6)]',
+  secondary: 'glass-surface text-white'
 };
 
 export default function Button({ children, variant = 'primary', className = '', ...props }) {
