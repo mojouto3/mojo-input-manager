@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Gamepad2, Play, Square, Plus, X, ArrowLeftRight } from 'lucide-react';
+import { Gamepad2, Play, Square, Plus, X, ArrowLeftRight, Save, Trash2 } from 'lucide-react';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import Select from '../components/Select';
@@ -45,8 +45,16 @@ export default function Mapping() {
   const [vjoyDevices, setVjoyDevices] = useState([]);
   const [mappings, setMappings] = useState([]);
   const [savedMappings, setSavedMappings] = useState([]);
+  const [gameProfiles, setGameProfiles] = useState([]);
+  const [showSaveProfile, setShowSaveProfile] = useState(false);
+  const [profileNameInput, setProfileNameInput] = useState('');
+  const [activeProfileId, setActiveProfileId] = useState(null);
   const mappingsRef = useRef([]);
   const autoRestoredRef = useRef(false);
+
+  function refreshGameProfiles() {
+    mim?.mappingSetups?.list().then((list) => setGameProfiles(list ?? []));
+  }
 
   useEffect(() => {
     mappingsRef.current = mappings;
@@ -91,6 +99,10 @@ export default function Mapping() {
 
   useEffect(() => {
     mim?.mappingProfiles?.list().then((list) => setSavedMappings(list ?? []));
+  }, []);
+
+  useEffect(() => {
+    refreshGameProfiles();
   }, []);
 
   useEffect(() => {
@@ -168,6 +180,7 @@ export default function Mapping() {
   }, [devices]);
 
   function addMapping() {
+    setActiveProfileId(null);
     setMappings((prev) => [...prev, emptySlot()]);
   }
 
@@ -177,10 +190,12 @@ export default function Mapping() {
       await mim.mapping.stop(Number(slot.targetDeviceId));
       refreshVjoyDevices();
     }
+    setActiveProfileId(null);
     setMappings((prev) => prev.filter((m) => m.id !== slotId));
   }
 
   function toggleDevice(slotId, deviceId) {
+    setActiveProfileId(null);
     setMappings((prev) =>
       prev.map((m) => {
         if (m.id !== slotId || m.isLive) return m;
@@ -193,6 +208,7 @@ export default function Mapping() {
   }
 
   function setTarget(slotId, targetDeviceId) {
+    setActiveProfileId(null);
     setMappings((prev) => prev.map((m) => (m.id === slotId ? { ...m, targetDeviceId } : m)));
   }
 
@@ -225,6 +241,7 @@ export default function Mapping() {
     const a = mappings[indexA];
     const b = mappings[indexB];
     if (!a || !b) return;
+    setActiveProfileId(null);
     if (a.isLive) await mim.mapping.stop(Number(a.targetDeviceId));
     if (b.isLive) await mim.mapping.stop(Number(b.targetDeviceId));
     // Refresh before re-rendering with the swapped targets, otherwise the
@@ -249,6 +266,56 @@ export default function Mapping() {
       );
     }
     refreshVjoyDevices();
+  }
+
+  // Game profiles are a named snapshot of the current mapping cards (which
+  // devices, which targets), so a whole multi-device setup can be swapped in
+  // for a different game with one click instead of rebuilding it by hand.
+  async function saveCurrentAsProfile() {
+    const name = profileNameInput.trim();
+    if (!name) return;
+    const setupMappings = mappings
+      .filter((m) => m.selectedIds.length > 0 && m.targetDeviceId)
+      .map((m) => ({ physicalIds: m.selectedIds, targetDeviceId: m.targetDeviceId }));
+    await mim.mappingSetups.create({ name, mappings: setupMappings });
+    setProfileNameInput('');
+    setShowSaveProfile(false);
+    refreshGameProfiles();
+  }
+
+  async function applyGameProfile(setup) {
+    setActiveProfileId(setup.id);
+    for (const slot of mappings) {
+      if (slot.isLive) await mim.mapping.stop(Number(slot.targetDeviceId));
+    }
+    const connectedIds = devices.map((d) => d.id);
+    const newSlots = setup.mappings
+      .filter((m) => m.physicalIds.every((id) => connectedIds.includes(id)))
+      .map((m) => ({
+        id: makeSlotId(),
+        selectedIds: m.physicalIds,
+        targetDeviceId: String(m.targetDeviceId),
+        isLive: false,
+        liveError: null
+      }));
+    setMappings(newSlots);
+    for (const slot of newSlots) {
+      const result = await mim.mapping.start(Number(slot.targetDeviceId));
+      setMappings((prev) =>
+        prev.map((m) => (m.id === slot.id ? { ...m, isLive: result.ok, liveError: result.ok ? null : result.error } : m))
+      );
+      if (result.ok) {
+        mim.mappingProfiles.save({ physicalIds: slot.selectedIds, targetDeviceId: slot.targetDeviceId });
+      }
+    }
+    setSavedMappings(await mim.mappingProfiles.list());
+    refreshVjoyDevices();
+  }
+
+  async function deleteGameProfile(id) {
+    if (activeProfileId === id) setActiveProfileId(null);
+    await mim.mappingSetups.remove(id);
+    refreshGameProfiles();
   }
 
   if (devices.length === 0) {
@@ -291,6 +358,72 @@ export default function Mapping() {
           Add Mapping
         </motion.button>
       </div>
+
+      <Card hover={false} className="mb-6 p-5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <span className="text-xs font-semibold uppercase tracking-wide text-mim-muted">Game Profiles</span>
+          <button
+            onClick={() => setShowSaveProfile((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-medium text-mim-muted transition-colors hover:text-white"
+          >
+            <Save size={13} />
+            Save current as...
+          </button>
+        </div>
+
+        {showSaveProfile && (
+          <div className="mb-3 flex items-center gap-2">
+            <input
+              autoFocus
+              value={profileNameInput}
+              onChange={(e) => setProfileNameInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && saveCurrentAsProfile()}
+              placeholder="e.g. Star Citizen"
+              className="glass-surface flex-1 rounded-md px-3 py-2 text-sm text-white outline-none"
+            />
+            <button
+              onClick={saveCurrentAsProfile}
+              disabled={!profileNameInput.trim()}
+              className="glass-surface flex h-9 items-center rounded-md px-3 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Save
+            </button>
+          </div>
+        )}
+
+        {gameProfiles.length === 0 ? (
+          <p className="text-sm text-mim-muted">
+            No saved profiles yet. Set up your mappings below, then save them here for one-click switching per game.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {gameProfiles.map((setup) => {
+              const isActive = activeProfileId === setup.id;
+              return (
+                <div
+                  key={setup.id}
+                  className={`group flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    isActive
+                      ? 'border border-mim-accent/40 bg-mim-accent/10 text-white shadow-[0_0_10px_rgba(var(--color-mim-accent-rgb),0.15)]'
+                      : 'glass-surface text-white hover:border-mim-accent/40'
+                  }`}
+                >
+                  <button onClick={() => applyGameProfile(setup)} className="font-medium">
+                    {setup.name}
+                  </button>
+                  <button
+                    onClick={() => deleteGameProfile(setup.id)}
+                    title="Delete this profile"
+                    className="text-mim-muted opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       {mappings.length === 0 ? (
         <Card hover={false} className="flex flex-col items-center gap-3 px-10 py-10 text-center">
