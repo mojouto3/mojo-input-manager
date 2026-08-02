@@ -7,6 +7,7 @@ const vjoyInterface = require('./vjoyInterface');
 const hidhide = require('./hidhide');
 const profiles = require('./profiles');
 const mappingProfiles = require('./mappingProfiles');
+const mappingSetups = require('./mappingSetups');
 const driverSources = require('./driverSources');
 
 // Each vJoy target can be fed independently and concurrently (a HOTAS's
@@ -384,6 +385,15 @@ ipcMain.handle('mapping-profiles:remove', (event, physicalIds) => {
   return { ok: true };
 });
 
+ipcMain.handle('mapping-setups:list', () => mappingSetups.list());
+
+ipcMain.handle('mapping-setups:create', (event, data) => mappingSetups.create(data));
+
+ipcMain.handle('mapping-setups:remove', (event, id) => {
+  mappingSetups.remove(id);
+  return { ok: true };
+});
+
 ipcMain.handle('backup:export', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const result = await dialog.showSaveDialog(win, {
@@ -399,7 +409,8 @@ ipcMain.handle('backup:export', async (event) => {
       exportedAt: new Date().toISOString(),
       version: 1,
       deviceFilteringProfiles: profiles.list(),
-      mappingProfiles: mappingProfiles.list()
+      mappingProfiles: mappingProfiles.list(),
+      gameProfiles: mappingSetups.list()
     };
     fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2));
     return { ok: true, path: result.filePath };
@@ -423,13 +434,14 @@ ipcMain.handle('backup:import', async (event) => {
     if (!Array.isArray(data.deviceFilteringProfiles) || !Array.isArray(data.mappingProfiles)) {
       throw new Error('Not a valid MIM profiles backup file.');
     }
+    const gameProfiles = Array.isArray(data.gameProfiles) ? data.gameProfiles : [];
     const confirmation = await dialog.showMessageBox(win, {
       type: 'warning',
       buttons: ['Cancel', 'Import'],
       defaultId: 1,
       cancelId: 0,
       title: 'Import MIM Profiles',
-      message: `Import ${data.deviceFilteringProfiles.length} device filtering profile(s) and ${data.mappingProfiles.length} mapping(s)?`,
+      message: `Import ${data.deviceFilteringProfiles.length} device filtering profile(s), ${data.mappingProfiles.length} mapping(s), and ${gameProfiles.length} game profile(s)?`,
       detail: 'This replaces your current saved profiles and mappings. This cannot be undone.'
     });
     if (confirmation.response !== 1) {
@@ -437,6 +449,7 @@ ipcMain.handle('backup:import', async (event) => {
     }
     profiles.replaceAll(data.deviceFilteringProfiles);
     mappingProfiles.replaceAll(data.mappingProfiles);
+    mappingSetups.replaceAll(gameProfiles);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };
