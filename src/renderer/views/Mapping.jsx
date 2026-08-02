@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Gamepad2, Play, Square, Plus, X, ArrowLeftRight, Save, Trash2 } from 'lucide-react';
+import { Gamepad2, Play, Square, Plus, X, ArrowLeftRight, Save, Trash2, SlidersHorizontal } from 'lucide-react';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import Select from '../components/Select';
+import Toggle from '../components/Toggle';
 
 const mim = typeof window !== 'undefined' ? window.mim : undefined;
 const MAX_AXES = 8;
@@ -23,6 +24,25 @@ const AXIS_NAMES = ['X', 'Y', 'Z', 'Rx', 'Ry', 'Rz', 'Sl0', 'Sl1'];
 
 function sameSet(a, b) {
   return a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|');
+}
+
+const DEFAULT_AXIS_SETTINGS = { invert: false, deadzone: 0, curve: 1 };
+
+// Applied to a raw axis reading before it's combined and sent to vJoy (and
+// mirrored in the live preview, so what you see matches what's felt).
+function shapeAxis(value, settings) {
+  if (!settings) return value;
+  let v = settings.invert ? -value : value;
+  const dz = settings.deadzone || 0;
+  if (dz > 0) {
+    const abs = Math.abs(v);
+    v = abs < dz ? 0 : Math.sign(v) * ((abs - dz) / (1 - dz));
+  }
+  const curve = settings.curve || 1;
+  if (curve !== 1) {
+    v = Math.sign(v) * Math.abs(v) ** curve;
+  }
+  return Math.max(-1, Math.min(1, v));
 }
 
 function readGamepads() {
@@ -49,8 +69,23 @@ export default function Mapping() {
   const [showSaveProfile, setShowSaveProfile] = useState(false);
   const [profileNameInput, setProfileNameInput] = useState('');
   const [activeProfileId, setActiveProfileId] = useState(null);
+  const [axisSettingsMap, setAxisSettingsMap] = useState({});
   const mappingsRef = useRef([]);
+  const axisSettingsRef = useRef({});
   const autoRestoredRef = useRef(false);
+
+  useEffect(() => {
+    axisSettingsRef.current = axisSettingsMap;
+  }, [axisSettingsMap]);
+
+  useEffect(() => {
+    mim?.axisSettings?.getAll().then((data) => setAxisSettingsMap(data ?? {}));
+  }, []);
+
+  async function setAxisSetting(deviceId, axisIndex, settings) {
+    setAxisSettingsMap((prev) => ({ ...prev, [deviceId]: { ...(prev[deviceId] ?? {}), [axisIndex]: settings } }));
+    await mim?.axisSettings?.set(deviceId, axisIndex, settings);
+  }
 
   function refreshGameProfiles() {
     mim?.mappingSetups?.list().then((list) => setGameProfiles(list ?? []));
@@ -70,10 +105,14 @@ export default function Mapping() {
         if (active.length === 0) continue;
         // Combine every selected device's axes/buttons, in selection order, into
         // one payload. This is how several physical devices feed a single vJoy
-        // target: each one contributes the next slice of axes/buttons.
+        // target: each one contributes the next slice of axes/buttons. Each
+        // axis is shaped (invert/deadzone/curve) using that device's own
+        // saved settings before it's combined.
         mim.mapping.feed({
           deviceId: Number(slot.targetDeviceId),
-          axes: active.flatMap((d) => d.axes).slice(0, MAX_AXES),
+          axes: active
+            .flatMap((d) => d.axes.map((v, i) => shapeAxis(v, axisSettingsRef.current[d.id]?.[i])))
+            .slice(0, MAX_AXES),
           buttons: active.flatMap((d) => d.buttons.map((b) => b.pressed))
         });
       }
@@ -454,6 +493,8 @@ export default function Mapping() {
               onToggleLive={() => toggleLive(slot.id)}
               onRemove={() => removeMapping(slot.id)}
               onSwapWithNext={() => swapTargets(index, index + 1)}
+              axisSettingsMap={axisSettingsMap}
+              onSetAxisSetting={setAxisSetting}
             />
           ))}
         </div>
@@ -475,8 +516,11 @@ function MappingSlotCard({
   onSetTarget,
   onToggleLive,
   onRemove,
-  onSwapWithNext
+  onSwapWithNext,
+  axisSettingsMap,
+  onSetAxisSetting
 }) {
+  const [expandedAxis, setExpandedAxis] = useState(null);
   const selectedDevices = slot.selectedIds.map((id) => devices.find((d) => d.id === id)).filter(Boolean);
   const totalAxes = selectedDevices.reduce((sum, d) => sum + d.axes.length, 0);
   const targetOptions = vjoyDevices
@@ -601,19 +645,95 @@ function MappingSlotCard({
 
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-mim-muted">Axes</p>
                 <div className="mb-5 flex flex-col gap-2">
-                  {device.axes.map((value, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <span className="w-8 text-xs text-mim-muted">{AXIS_NAMES[i] ?? `A${i}`}</span>
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-mim-surface-light">
-                        <motion.div
-                          className="h-full bg-mim-accent"
-                          animate={{ width: `${((value + 1) / 2) * 100}%` }}
-                          transition={{ duration: 0.05 }}
-                        />
+                  {device.axes.map((rawValue, i) => {
+                    const settings = axisSettingsMap[device.id]?.[i] ?? DEFAULT_AXIS_SETTINGS;
+                    const value = shapeAxis(rawValue, settings);
+                    const axisKey = `${device.id}::${i}`;
+                    const isExpanded = expandedAxis === axisKey;
+                    return (
+                      <div key={i}>
+                        <div className="flex items-center gap-3">
+                          <span className="w-8 text-xs text-mim-muted">{AXIS_NAMES[i] ?? `A${i}`}</span>
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-mim-surface-light">
+                            <motion.div
+                              className="h-full bg-mim-accent"
+                              animate={{ width: `${((value + 1) / 2) * 100}%` }}
+                              transition={{ duration: 0.05 }}
+                            />
+                          </div>
+                          <span className="w-12 text-right text-xs text-mim-muted">{value.toFixed(2)}</span>
+                          <button
+                            onClick={() => setExpandedAxis(isExpanded ? null : axisKey)}
+                            title="Tune this axis"
+                            className={`relative shrink-0 transition-colors ${
+                              isExpanded ? 'text-mim-accent' : 'text-mim-muted hover:text-white'
+                            }`}
+                          >
+                            <SlidersHorizontal size={12} />
+                            {(settings.invert || settings.deadzone > 0 || settings.curve !== 1) && (
+                              <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-mim-accent" />
+                            )}
+                          </button>
+                        </div>
+                        {isExpanded && (
+                          <div className="mt-2 ml-11 flex flex-col gap-3 rounded-lg glass-surface p-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-mim-muted">
+                                {AXIS_NAMES[i] ?? `A${i}`}
+                              </span>
+                              <button
+                                onClick={() => onSetAxisSetting(device.id, i, { invert: false, deadzone: 0, curve: 1 })}
+                                className="text-xs text-mim-muted transition-colors hover:text-white"
+                              >
+                                Reset
+                              </button>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-mim-muted">
+                              <span>Invert</span>
+                              <Toggle
+                                checked={settings.invert}
+                                onChange={(v) => onSetAxisSetting(device.id, i, { ...settings, invert: v })}
+                              />
+                            </div>
+                            <label className="flex flex-col gap-1 text-xs text-mim-muted">
+                              <span className="flex justify-between">
+                                <span>Deadzone</span>
+                                <span>{Math.round(settings.deadzone * 100)}%</span>
+                              </span>
+                              <input
+                                type="range"
+                                min="0"
+                                max="0.5"
+                                step="0.01"
+                                value={settings.deadzone}
+                                onChange={(e) =>
+                                  onSetAxisSetting(device.id, i, { ...settings, deadzone: Number(e.target.value) })
+                                }
+                                className="w-full accent-mim-accent"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs text-mim-muted">
+                              <span className="flex justify-between">
+                                <span>Curve</span>
+                                <span>{settings.curve.toFixed(1)}x</span>
+                              </span>
+                              <input
+                                type="range"
+                                min="0.3"
+                                max="3"
+                                step="0.1"
+                                value={settings.curve}
+                                onChange={(e) =>
+                                  onSetAxisSetting(device.id, i, { ...settings, curve: Number(e.target.value) })
+                                }
+                                className="w-full accent-mim-accent"
+                              />
+                            </label>
+                          </div>
+                        )}
                       </div>
-                      <span className="w-12 text-right text-xs text-mim-muted">{value.toFixed(2)}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-mim-muted">Buttons</p>
