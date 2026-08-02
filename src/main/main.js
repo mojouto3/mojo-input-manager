@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, Tray, ipcMain, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
+const fs = require('fs');
 const vjoy = require('./vjoy');
 const vjoyInterface = require('./vjoyInterface');
 const hidhide = require('./hidhide');
@@ -101,11 +102,13 @@ function showMainWindow() {
   mainWindow.focus();
 }
 
+let rebuildTrayMenu = () => {};
+
 function createTray() {
   tray = new Tray(iconPath);
   tray.setToolTip('Mojo Input Manager');
 
-  const rebuildMenu = () => {
+  rebuildTrayMenu = () => {
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'Open Mojo Input Manager', click: showMainWindow },
       { type: 'separator' },
@@ -114,11 +117,7 @@ function createTray() {
         type: 'checkbox',
         checked: app.getLoginItemSettings().openAtLogin,
         click: (menuItem) => {
-          app.setLoginItemSettings({
-            openAtLogin: menuItem.checked,
-            args: menuItem.checked ? ['--hidden'] : []
-          });
-          rebuildMenu();
+          setLaunchAtStartup(menuItem.checked);
         }
       },
       { type: 'separator' },
@@ -131,9 +130,17 @@ function createTray() {
       }
     ]));
   };
-  rebuildMenu();
+  rebuildTrayMenu();
 
   tray.on('click', showMainWindow);
+}
+
+function setLaunchAtStartup(enabled) {
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    args: enabled ? ['--hidden'] : []
+  });
+  rebuildTrayMenu();
 }
 
 ipcMain.on('window:minimize', (event) => {
@@ -348,6 +355,13 @@ ipcMain.handle('system:install-driver', async (event, key) => {
 
 ipcMain.handle('system:get-app-version', () => app.getVersion());
 
+ipcMain.handle('system:get-launch-at-startup', () => app.getLoginItemSettings().openAtLogin);
+
+ipcMain.handle('system:set-launch-at-startup', (event, enabled) => {
+  setLaunchAtStartup(enabled);
+  return { ok: true };
+});
+
 ipcMain.handle('system:get-update-status', () => updateStatus);
 
 ipcMain.handle('system:check-for-updates', () => {
@@ -368,6 +382,65 @@ ipcMain.handle('mapping-profiles:save', (event, data) => {
 ipcMain.handle('mapping-profiles:remove', (event, physicalIds) => {
   mappingProfiles.remove(physicalIds);
   return { ok: true };
+});
+
+ipcMain.handle('backup:export', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showSaveDialog(win, {
+    title: 'Export MIM Profiles',
+    defaultPath: 'mim-profiles-backup.json',
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  });
+  if (result.canceled || !result.filePath) {
+    return { ok: false, cancelled: true };
+  }
+  try {
+    const data = {
+      exportedAt: new Date().toISOString(),
+      version: 1,
+      deviceFilteringProfiles: profiles.list(),
+      mappingProfiles: mappingProfiles.list()
+    };
+    fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2));
+    return { ok: true, path: result.filePath };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('backup:import', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const picked = await dialog.showOpenDialog(win, {
+    title: 'Import MIM Profiles',
+    properties: ['openFile'],
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  });
+  if (picked.canceled || picked.filePaths.length === 0) {
+    return { ok: false, cancelled: true };
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(picked.filePaths[0], 'utf8'));
+    if (!Array.isArray(data.deviceFilteringProfiles) || !Array.isArray(data.mappingProfiles)) {
+      throw new Error('Not a valid MIM profiles backup file.');
+    }
+    const confirmation = await dialog.showMessageBox(win, {
+      type: 'warning',
+      buttons: ['Cancel', 'Import'],
+      defaultId: 1,
+      cancelId: 0,
+      title: 'Import MIM Profiles',
+      message: `Import ${data.deviceFilteringProfiles.length} device filtering profile(s) and ${data.mappingProfiles.length} mapping(s)?`,
+      detail: 'This replaces your current saved profiles and mappings. This cannot be undone.'
+    });
+    if (confirmation.response !== 1) {
+      return { ok: false, cancelled: true };
+    }
+    profiles.replaceAll(data.deviceFilteringProfiles);
+    mappingProfiles.replaceAll(data.mappingProfiles);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();

@@ -42,6 +42,10 @@ function remove(id) {
   save(profiles);
 }
 
+function replaceAll(profiles) {
+  save(profiles);
+}
+
 async function apply(id) {
   const profile = load().find((p) => p.id === id);
   if (!profile) {
@@ -66,4 +70,4 @@ async function apply(id) {
   await hidhide.setCloak(true);
 }
 
-module.exports = { list, create, remove, apply };
+module.exports = { list, create, remove, replaceAll, apply };
