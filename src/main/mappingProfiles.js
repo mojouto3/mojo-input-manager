@@ -47,4 +47,8 @@ function remove(physicalIds) {
   save(load().filter((p) => key(p.physicalIds) !== key(physicalIds)));
 }
 
-module.exports = { list, upsert, remove };
+function replaceAll(profiles) {
+  save(profiles.map(normalize));
+}
+
+module.exports = { list, upsert, remove, replaceAll };

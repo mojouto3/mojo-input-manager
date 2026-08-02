@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Palette, Info, RefreshCw } from 'lucide-react';
+import { Palette, Info, RefreshCw, Download, Upload, Power } from 'lucide-react';
 import Card from '../components/Card';
+import Toggle from '../components/Toggle';
 import { getTheme, setTheme } from '../theme';
 
 const mim = typeof window !== 'undefined' ? window.mim : undefined;
@@ -26,16 +27,49 @@ export default function Settings() {
   const [theme, setThemeState] = useState(getTheme());
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState({ status: 'idle' });
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupNotice, setBackupNotice] = useState(null);
+  const [launchAtStartup, setLaunchAtStartupState] = useState(false);
 
   useEffect(() => {
     mim?.system?.getAppVersion().then(setVersion);
     mim?.system?.getUpdateStatus().then(setUpdateStatus);
+    mim?.system?.getLaunchAtStartup().then(setLaunchAtStartupState);
     return mim?.system?.onUpdateStatus(setUpdateStatus);
   }, []);
+
+  async function toggleLaunchAtStartup(enabled) {
+    setLaunchAtStartupState(enabled);
+    await mim?.system?.setLaunchAtStartup(enabled);
+  }
 
   function chooseTheme(id) {
     setTheme(id);
     setThemeState(id);
+  }
+
+  async function handleExport() {
+    setBackupBusy(true);
+    setBackupNotice(null);
+    const result = await mim?.backup?.export();
+    if (result?.ok) {
+      setBackupNotice({ type: 'success', text: `Exported to ${result.path}` });
+    } else if (!result?.cancelled) {
+      setBackupNotice({ type: 'error', text: result?.error ?? 'Export failed.' });
+    }
+    setBackupBusy(false);
+  }
+
+  async function handleImport() {
+    setBackupBusy(true);
+    setBackupNotice(null);
+    const result = await mim?.backup?.import();
+    if (result?.ok) {
+      setBackupNotice({ type: 'success', text: 'Profiles imported. Restart MIM to see them everywhere.' });
+    } else if (!result?.cancelled) {
+      setBackupNotice({ type: 'error', text: result?.error ?? 'Import failed.' });
+    }
+    setBackupBusy(false);
   }
 
   const statusLabel = STATUS_LABEL[updateStatus.status] ?? updateStatus.status;
@@ -73,6 +107,60 @@ export default function Settings() {
             </button>
           ))}
         </div>
+      </Card>
+
+      <Card hover={false} className="mb-4 p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Power size={16} className="text-mim-muted" />
+          <h2 className="text-sm font-semibold text-white">Background</h2>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm text-white">Launch at startup</p>
+            <p className="mt-1 text-xs text-mim-muted">
+              Start MIM minimized to the tray when you log into Windows.
+            </p>
+          </div>
+          <Toggle checked={launchAtStartup} onChange={toggleLaunchAtStartup} />
+        </div>
+      </Card>
+
+      <Card hover={false} className="mb-4 p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Download size={16} className="text-mim-muted" />
+          <h2 className="text-sm font-semibold text-white">Backup</h2>
+        </div>
+        <p className="mb-4 text-sm text-mim-muted">
+          Export your Device Filtering profiles and remembered mappings to a file, useful before reinstalling
+          Windows or moving to a new setup on the same hardware.
+        </p>
+        <div className="flex gap-3">
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={handleExport}
+            disabled={backupBusy}
+            className="glass-surface flex h-9 items-center gap-1.5 rounded-full px-4 text-xs font-semibold text-white transition-shadow disabled:opacity-50"
+          >
+            <Download size={13} />
+            Export Profiles
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={handleImport}
+            disabled={backupBusy}
+            className="glass-surface flex h-9 items-center gap-1.5 rounded-full px-4 text-xs font-semibold text-white transition-shadow disabled:opacity-50"
+          >
+            <Upload size={13} />
+            Import Profiles
+          </motion.button>
+        </div>
+        {backupNotice && (
+          <p className={`mt-3 text-xs ${backupNotice.type === 'error' ? 'text-red-400' : 'text-mim-muted'}`}>
+            {backupNotice.text}
+          </p>
+        )}
       </Card>
 
       <Card hover={false} className="p-5">

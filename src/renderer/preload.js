@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld('mim', {
     checkDrivers: () => ipcRenderer.invoke('system:check-drivers'),
     openExternal: (url) => ipcRenderer.invoke('system:open-external', url),
     getAppVersion: () => ipcRenderer.invoke('system:get-app-version'),
+    getLaunchAtStartup: () => ipcRenderer.invoke('system:get-launch-at-startup'),
+    setLaunchAtStartup: (enabled) => ipcRenderer.invoke('system:set-launch-at-startup', enabled),
     getUpdateStatus: () => ipcRenderer.invoke('system:get-update-status'),
     checkForUpdates: () => ipcRenderer.invoke('system:check-for-updates'),
     getDriverInfo: (key) => ipcRenderer.invoke('system:get-driver-info', key),
@@ -57,5 +59,9 @@ contextBridge.exposeInMainWorld('mim', {
     list: () => ipcRenderer.invoke('mapping-profiles:list'),
     save: (data) => ipcRenderer.invoke('mapping-profiles:save', data),
     remove: (physicalIds) => ipcRenderer.invoke('mapping-profiles:remove', physicalIds)
+  },
+  backup: {
+    export: () => ipcRenderer.invoke('backup:export'),
+    import: () => ipcRenderer.invoke('backup:import')
   }
 });
