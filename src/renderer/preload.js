@@ -65,6 +65,10 @@ contextBridge.exposeInMainWorld('mim', {
     create: (data) => ipcRenderer.invoke('mapping-setups:create', data),
     remove: (id) => ipcRenderer.invoke('mapping-setups:remove', id)
   },
+  axisSettings: {
+    getAll: () => ipcRenderer.invoke('axis-settings:get-all'),
+    set: (deviceId, axisIndex, settings) => ipcRenderer.invoke('axis-settings:set', { deviceId, axisIndex, settings })
+  },
   backup: {
     export: () => ipcRenderer.invoke('backup:export'),
     import: () => ipcRenderer.invoke('backup:import')

@@ -8,6 +8,7 @@ const hidhide = require('./hidhide');
 const profiles = require('./profiles');
 const mappingProfiles = require('./mappingProfiles');
 const mappingSetups = require('./mappingSetups');
+const axisSettings = require('./axisSettings');
 const driverSources = require('./driverSources');
 
 // Each vJoy target can be fed independently and concurrently (a HOTAS's
@@ -394,6 +395,12 @@ ipcMain.handle('mapping-setups:remove', (event, id) => {
   return { ok: true };
 });
 
+ipcMain.handle('axis-settings:get-all', () => axisSettings.getAll());
+
+ipcMain.handle('axis-settings:set', (event, { deviceId, axisIndex, settings }) => {
+  return axisSettings.setAxis(deviceId, axisIndex, settings);
+});
+
 ipcMain.handle('backup:export', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const result = await dialog.showSaveDialog(win, {
@@ -410,7 +417,8 @@ ipcMain.handle('backup:export', async (event) => {
       version: 1,
       deviceFilteringProfiles: profiles.list(),
       mappingProfiles: mappingProfiles.list(),
-      gameProfiles: mappingSetups.list()
+      gameProfiles: mappingSetups.list(),
+      axisSettings: axisSettings.getAll()
     };
     fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2));
     return { ok: true, path: result.filePath };
@@ -450,6 +458,9 @@ ipcMain.handle('backup:import', async (event) => {
     profiles.replaceAll(data.deviceFilteringProfiles);
     mappingProfiles.replaceAll(data.mappingProfiles);
     mappingSetups.replaceAll(gameProfiles);
+    if (data.axisSettings && typeof data.axisSettings === 'object') {
+      axisSettings.replaceAll(data.axisSettings);
+    }
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };
