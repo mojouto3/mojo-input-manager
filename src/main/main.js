@@ -390,6 +390,8 @@ ipcMain.handle('mapping-setups:list', () => mappingSetups.list());
 
 ipcMain.handle('mapping-setups:create', (event, data) => mappingSetups.create(data));
 
+ipcMain.handle('mapping-setups:update', (event, { id, patch }) => mappingSetups.update(id, patch));
+
 ipcMain.handle('mapping-setups:remove', (event, id) => {
   mappingSetups.remove(id);
   return { ok: true };
