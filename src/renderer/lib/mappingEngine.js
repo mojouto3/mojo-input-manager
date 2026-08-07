@@ -91,6 +91,21 @@ export function compileAction(action) {
         tapOutputIndex: action.config?.tapOutputIndex,
         holdOutputIndex: action.config?.holdOutputIndex
       };
+    case 'macro':
+      // Button-only: pressing the physical button plays a fixed sequence of
+      // "press vJoy button", "release vJoy button", and "wait" steps over
+      // time, instead of just asserting one output for as long as it's held.
+      // Owns its own output placement entirely, like Tempo, so it never
+      // falls back to positional forwarding, and every output index any step
+      // references is reserved up front (see tick()'s pre-scan in
+      // Mapping.jsx) even before the macro has ever played, since it will
+      // eventually drive that slot.
+      return {
+        kind: 'macro',
+        steps: Array.isArray(action.config?.steps)
+          ? action.config.steps.filter((s) => s && (s.type === 'wait' ? Number.isFinite(s.ms) : Number.isInteger(s.outputIndex)))
+          : []
+      };
     case 'hatButtons':
       // Axis-only: some hardware reports a 4-way hat as a single axis with a
       // handful of fixed discrete values (calibrated per-device in the UI,
@@ -197,7 +212,7 @@ export function setBaseAction(setup, inputKey, action) {
   const autoActionIds = existingSeq ? existingSeq.actionIds.filter((id) => library[id]?.auto) : [];
 
   const actionId = makeId('act');
-  library[actionId] = { type: action.type, config: action.config, shapeStash: action.shapeStash };
+  library[actionId] = { type: action.type, config: action.config, typeStash: action.typeStash };
   const seqId = existingSeqId ?? makeId('seq');
   sequences[seqId] = { actionIds: [actionId, ...autoActionIds] };
   bindings[DEFAULT_MODE_ID][inputKey] = seqId;
@@ -230,7 +245,7 @@ export function setConditionAction(setup, triggerKey, targetInputKey, action) {
   const withTrigger = ensureHoldTrigger(setup, triggerKey);
   const { modes, library, sequences, bindings, triggerModeId } = withTrigger;
   const actionId = makeId('act');
-  const nextLibrary = { ...library, [actionId]: { type: action.type, config: action.config, shapeStash: action.shapeStash } };
+  const nextLibrary = { ...library, [actionId]: { type: action.type, config: action.config, typeStash: action.typeStash } };
   const seqId = makeId('seq');
   const nextSequences = { ...sequences, [seqId]: { actionIds: [actionId] } };
   const nextBindings = { ...bindings, [triggerModeId]: { ...(bindings[triggerModeId] ?? {}), [targetInputKey]: seqId } };

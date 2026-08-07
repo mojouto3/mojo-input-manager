@@ -13,7 +13,7 @@ const mim = typeof window !== 'undefined' ? window.mim : undefined;
 // the same live Gamepad API list Mapping.jsx already polls. Modes exist only
 // inside mappingEngine.js's reconciliation helpers, this component and
 // everything it renders talks entirely in "rules" (see RuleCard.jsx).
-export default function AdvancedMappingTab({ profile, devices, onSaved }) {
+export default function AdvancedMappingTab({ profile, devices, activeOutputs, onSaved }) {
   const [setup, setSetup] = useState(profile);
   const [selectedInput, setSelectedInput] = useState(null);
 
@@ -81,6 +81,7 @@ export default function AdvancedMappingTab({ profile, devices, onSaved }) {
                 inputIndex={selectedInput.index}
                 rule={rule}
                 devices={devices}
+                activeOutputs={activeOutputs?.[selectedInput.key] ?? []}
                 shiftKey={setup.shiftKey}
                 onSetShiftKey={(key) => persist({ ...setup, shiftKey: key })}
                 onSetBase={(action) => persist(setBaseAction(setup, selectedInput.key, action))}

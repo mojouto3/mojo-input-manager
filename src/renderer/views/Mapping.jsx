@@ -63,6 +63,13 @@ export default function Mapping() {
   const [axisSettingsMap, setAxisSettingsMap] = useState({});
   const [activeModeId, setActiveModeId] = useState(DEFAULT_MODE_ID);
   const [mappingTab, setMappingTab] = useState('live');
+  // Snapshot of currently-asserted vJoy output indices per inputKey, for
+  // whichever inputs have a Macro (or Tempo/Hat Buttons) pipeline actively
+  // holding an output right now. Lets the Advanced Mapping editor show live
+  // "this output is on right now" feedback in-app, instead of the user
+  // needing Windows' own Game Controllers properties panel open to see it.
+  const [activeOutputs, setActiveOutputs] = useState({});
+  const activeOutputsRef = useRef({});
   const mappingsRef = useRef([]);
   const axisSettingsRef = useRef({});
   const autoRestoredRef = useRef(false);
@@ -79,6 +86,11 @@ export default function Mapping() {
   // Per-button Tempo (tap vs. hold) state: { pressStart, resolved, pulseUntil }
   // keyed by inputKey, or absent/null between presses.
   const tempoStateRef = useRef(new Map());
+  // Per-button Macro playback state: { stepIndex, nextAt, held } keyed by
+  // inputKey. held is the Set of vJoy output indices the macro currently
+  // has asserted, re-applied every tick for as long as they're meant to stay
+  // pressed, not just at the instant a "press" step fires.
+  const macroStateRef = useRef(new Map());
 
   useEffect(() => {
     axisSettingsRef.current = axisSettingsMap;
@@ -122,6 +134,12 @@ export default function Mapping() {
       const pads = readGamepads();
       setDevices(pads);
       const runtime = runtimeRef.current;
+      // Per-inputKey vJoy output indices actually asserted this tick, for
+      // whichever pipeline kind computes something other than a plain mirror
+      // of the physical input (Hat Buttons, Tempo, Macro). Compared against
+      // the previous tick's snapshot below so the Advanced Mapping editor
+      // only re-renders when what's live actually changes.
+      const tickActiveOutputs = {};
 
       for (const slot of mappingsRef.current) {
         if (!slot.isLive || !slot.targetDeviceId) continue;
@@ -162,12 +180,14 @@ export default function Mapping() {
                 } else if (step.kind === 'hat') {
                   handledAsHat = true;
                   const direction = classifyHatDirection(v, step.directions);
+                  const activeOutIdx = step.outputs[direction];
                   for (const [dir, outIdx] of Object.entries(step.outputs)) {
                     if (Number.isInteger(outIdx)) {
                       buttonsOut[outIdx] = dir === direction;
                       reservedOutputs.add(outIdx);
                     }
                   }
+                  if (Number.isInteger(activeOutIdx)) tickActiveOutputs[inputKey] = [activeOutIdx];
                 }
               }
             } else {
@@ -179,10 +199,13 @@ export default function Mapping() {
         const axes = axesOut.slice(0, MAX_AXES);
 
         // Read-only pre-scan so every button pipeline's claimed output slot
-        // (a plain "presses vJoy button N", or Tempo's tap/hold slots) is
-        // known before any positional assignment happens below, this never
-        // touches prevButtonsRef/tempoStateRef, it only looks at what each
-        // pipeline is capable of writing to.
+        // (a plain "presses vJoy button N", Tempo's tap/hold slots, or every
+        // slot a Macro's steps could ever touch) is known before any
+        // positional assignment happens below, this never touches
+        // prevButtonsRef/tempoStateRef/macroStateRef, it only looks at what
+        // each pipeline is capable of writing to. A Macro's slots are
+        // reserved even while it isn't currently playing, since it owns
+        // those outputs whenever it does run.
         for (const d of active) {
           for (let i = 0; i < d.buttons.length; i++) {
             const pipeline = runtime?.getPipeline(`${d.id}:button:${i}`);
@@ -192,6 +215,10 @@ export default function Mapping() {
               else if (step.kind === 'tempo') {
                 if (Number.isInteger(step.tapOutputIndex)) reservedOutputs.add(step.tapOutputIndex);
                 if (Number.isInteger(step.holdOutputIndex)) reservedOutputs.add(step.holdOutputIndex);
+              } else if (step.kind === 'macro') {
+                for (const s of step.steps) {
+                  if (Number.isInteger(s.outputIndex)) reservedOutputs.add(s.outputIndex);
+                }
               }
             }
           }
@@ -218,6 +245,7 @@ export default function Mapping() {
             const pipeline = runtime?.getPipeline(inputKey);
             let outputIndex = null;
             let tempoHandled = false;
+            let macroHandled = false;
             if (pipeline) {
               const wasPressed = prevButtonsRef.current.get(inputKey) ?? false;
               const edge = b.pressed && !wasPressed;
@@ -254,16 +282,40 @@ export default function Mapping() {
                   tempoStateRef.current.set(inputKey, state);
                   if (state?.resolved === 'hold' && Number.isInteger(step.holdOutputIndex)) {
                     buttonsOut[step.holdOutputIndex] = true;
+                    tickActiveOutputs[inputKey] = [step.holdOutputIndex];
                   } else if (state?.resolved === 'tap' && Number.isInteger(step.tapOutputIndex)) {
                     buttonsOut[step.tapOutputIndex] = true;
+                    tickActiveOutputs[inputKey] = [step.tapOutputIndex];
+                  }
+                } else if (step.kind === 'macro') {
+                  macroHandled = true;
+                  if (edge) macroStateRef.current.set(inputKey, { stepIndex: 0, nextAt: now, held: new Set() });
+                  const state = macroStateRef.current.get(inputKey);
+                  if (state) {
+                    // A press/release step fires immediately (nextAt stays
+                    // at now), so a run of them in a row all execute within
+                    // this same tick, only a wait step actually introduces
+                    // delay before the loop stops advancing.
+                    while (state.stepIndex < step.steps.length && now >= state.nextAt) {
+                      const s = step.steps[state.stepIndex];
+                      if (s.type === 'press') state.held.add(s.outputIndex);
+                      else if (s.type === 'release') state.held.delete(s.outputIndex);
+                      else if (s.type === 'wait') state.nextAt = now + s.ms;
+                      state.stepIndex += 1;
+                    }
+                    for (const idx of state.held) buttonsOut[idx] = true;
+                    if (state.held.size > 0) tickActiveOutputs[inputKey] = [...state.held];
+                    if (state.stepIndex >= step.steps.length && state.held.size === 0) {
+                      macroStateRef.current.delete(inputKey);
+                    }
                   }
                 }
               }
               prevButtonsRef.current.set(inputKey, b.pressed);
             }
-            if (tempoHandled) {
-              // Tempo already wrote its own output slot(s) above; this
-              // physical button never also occupies a positional slot.
+            if (tempoHandled || macroHandled) {
+              // Tempo/Macro already wrote their own output slot(s) above;
+              // this physical button never also occupies a positional slot.
             } else if (outputIndex !== null) {
               buttonsOut[outputIndex] = b.pressed;
             } else {
@@ -280,6 +332,16 @@ export default function Mapping() {
         runtime.setActiveMode(pendingModeChangeRef.current);
         setActiveModeId(runtime.activeModeId);
         pendingModeChangeRef.current = null;
+      }
+
+      const prevKeys = Object.keys(activeOutputsRef.current);
+      const nextKeys = Object.keys(tickActiveOutputs);
+      const changed =
+        prevKeys.length !== nextKeys.length ||
+        nextKeys.some((k) => activeOutputsRef.current[k]?.join() !== tickActiveOutputs[k].join());
+      if (changed) {
+        activeOutputsRef.current = tickActiveOutputs;
+        setActiveOutputs(tickActiveOutputs);
       }
     }
     const interval = setInterval(tick, TICK_INTERVAL_MS);
@@ -696,7 +758,7 @@ export default function Mapping() {
 
       <div className={mappingTab === 'advanced' ? 'block' : 'hidden'}>
         {activeProfile ? (
-          <AdvancedMappingTab profile={activeProfile} devices={devices} onSaved={refreshGameProfiles} />
+          <AdvancedMappingTab profile={activeProfile} devices={devices} activeOutputs={activeOutputs} onSaved={refreshGameProfiles} />
         ) : (
           <Card hover={false} className="flex flex-col items-center gap-3 px-10 py-10 text-center">
             <p className="text-sm text-mim-muted">
