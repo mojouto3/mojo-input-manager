@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('mim', {
     checkForUpdates: () => ipcRenderer.invoke('system:check-for-updates'),
     getDriverInfo: (key) => ipcRenderer.invoke('system:get-driver-info', key),
     installDriver: (key) => ipcRenderer.invoke('system:install-driver', key),
+    openGameControllers: () => ipcRenderer.invoke('system:open-game-controllers'),
     onUpdateStatus: (callback) => {
       const listener = (_event, status) => callback(status);
       ipcRenderer.on('updater:status', listener);
@@ -72,6 +73,7 @@ contextBridge.exposeInMainWorld('mim', {
   },
   backup: {
     export: () => ipcRenderer.invoke('backup:export'),
-    import: () => ipcRenderer.invoke('backup:import')
+    pickImportFile: () => ipcRenderer.invoke('backup:pick-import-file'),
+    applyImport: (data) => ipcRenderer.invoke('backup:apply-import', data)
   }
 });

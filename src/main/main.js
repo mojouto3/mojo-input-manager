@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, Tray, ipcMain, dialog, shell } = require('elec
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
+const { exec } = require('child_process');
 const vjoy = require('./vjoy');
 const vjoyInterface = require('./vjoyInterface');
 const hidhide = require('./hidhide');
@@ -339,6 +340,16 @@ ipcMain.handle('system:open-external', (event, url) => {
   }
 });
 
+// Windows has no way to deep-link straight to one controller's properties
+// page, only to the general list (the user still picks the right vJoy
+// device from there), but that's still faster than digging through Settings
+// by hand while testing a rule in Advanced Mapping.
+ipcMain.handle('system:open-game-controllers', () => {
+  exec('control joy.cpl', (err) => {
+    if (err) console.error('Failed to open joy.cpl:', err.message);
+  });
+});
+
 ipcMain.handle('system:get-driver-info', async (event, key) => {
   try {
     return { ok: true, info: await driverSources.getLatest(key) };
@@ -429,7 +440,12 @@ ipcMain.handle('backup:export', async (event) => {
   }
 });
 
-ipcMain.handle('backup:import', async (event) => {
+// Split into pick+validate (native file picker is the one native dialog
+// every desktop app is expected to have) and a separate apply step, so the
+// "are you sure, this replaces everything" confirmation can be a normal
+// in-app modal styled like the rest of MIM instead of a native OS message
+// box that looked out of place next to a fully custom UI.
+ipcMain.handle('backup:pick-import-file', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const picked = await dialog.showOpenDialog(win, {
     title: 'Import MIM Profiles',
@@ -444,19 +460,15 @@ ipcMain.handle('backup:import', async (event) => {
     if (!Array.isArray(data.deviceFilteringProfiles) || !Array.isArray(data.mappingProfiles)) {
       throw new Error('Not a valid MIM profiles backup file.');
     }
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('backup:apply-import', (event, data) => {
+  try {
     const gameProfiles = Array.isArray(data.gameProfiles) ? data.gameProfiles : [];
-    const confirmation = await dialog.showMessageBox(win, {
-      type: 'warning',
-      buttons: ['Cancel', 'Import'],
-      defaultId: 1,
-      cancelId: 0,
-      title: 'Import MIM Profiles',
-      message: `Import ${data.deviceFilteringProfiles.length} device filtering profile(s), ${data.mappingProfiles.length} mapping(s), and ${gameProfiles.length} game profile(s)?`,
-      detail: 'This replaces your current saved profiles and mappings. This cannot be undone.'
-    });
-    if (confirmation.response !== 1) {
-      return { ok: false, cancelled: true };
-    }
     profiles.replaceAll(data.deviceFilteringProfiles);
     mappingProfiles.replaceAll(data.mappingProfiles);
     mappingSetups.replaceAll(gameProfiles);
