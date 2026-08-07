@@ -91,6 +91,17 @@ export function compileAction(action) {
         tapOutputIndex: action.config?.tapOutputIndex,
         holdOutputIndex: action.config?.holdOutputIndex
       };
+    case 'hatButtons':
+      // Axis-only: some hardware reports a 4-way hat as a single axis with a
+      // handful of fixed discrete values (calibrated per-device in the UI,
+      // there's no universal standard value to assume), rather than as real
+      // continuous movement. This turns that one axis into up to four
+      // button-shaped outputs instead of a curve/deadzone-shaped value.
+      return {
+        kind: 'hat',
+        directions: action.config?.directions ?? {},
+        outputs: action.config?.outputs ?? {}
+      };
     case 'changeMode':
       return {
         kind: 'event',
@@ -108,6 +119,24 @@ export function compileAction(action) {
     default:
       return null;
   }
+}
+
+// Finds whichever calibrated direction (including 'neutral', if calibrated)
+// the current raw value sits closest to. Nearest-match rather than a fixed
+// tolerance band, since the calibrated points are whatever this specific
+// hardware actually reports, not a value MIM assumes in advance.
+export function classifyHatDirection(value, directions) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const [dir, refValue] of Object.entries(directions ?? {})) {
+    if (typeof refValue !== 'number') continue;
+    const dist = Math.abs(value - refValue);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = dir;
+    }
+  }
+  return best;
 }
 
 function makeId(prefix) {
@@ -168,7 +197,7 @@ export function setBaseAction(setup, inputKey, action) {
   const autoActionIds = existingSeq ? existingSeq.actionIds.filter((id) => library[id]?.auto) : [];
 
   const actionId = makeId('act');
-  library[actionId] = { type: action.type, config: action.config };
+  library[actionId] = { type: action.type, config: action.config, shapeStash: action.shapeStash };
   const seqId = existingSeqId ?? makeId('seq');
   sequences[seqId] = { actionIds: [actionId, ...autoActionIds] };
   bindings[DEFAULT_MODE_ID][inputKey] = seqId;
@@ -201,7 +230,7 @@ export function setConditionAction(setup, triggerKey, targetInputKey, action) {
   const withTrigger = ensureHoldTrigger(setup, triggerKey);
   const { modes, library, sequences, bindings, triggerModeId } = withTrigger;
   const actionId = makeId('act');
-  const nextLibrary = { ...library, [actionId]: { type: action.type, config: action.config } };
+  const nextLibrary = { ...library, [actionId]: { type: action.type, config: action.config, shapeStash: action.shapeStash } };
   const seqId = makeId('seq');
   const nextSequences = { ...sequences, [seqId]: { actionIds: [actionId] } };
   const nextBindings = { ...bindings, [triggerModeId]: { ...(bindings[triggerModeId] ?? {}), [targetInputKey]: seqId } };

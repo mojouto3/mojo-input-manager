@@ -7,7 +7,7 @@ import Select from '../components/Select';
 import Toggle from '../components/Toggle';
 import Tabs from '../components/Tabs';
 import AdvancedMappingTab from '../components/mapping/AdvancedMappingTab';
-import { shapeValue as shapeAxis, createModeRuntime, DEFAULT_MODE_ID } from '../lib/mappingEngine';
+import { shapeValue as shapeAxis, createModeRuntime, DEFAULT_MODE_ID, classifyHatDirection } from '../lib/mappingEngine';
 
 const mim = typeof window !== 'undefined' ? window.mim : undefined;
 const MAX_AXES = 8;
@@ -128,33 +128,89 @@ export default function Mapping() {
         const active = slot.selectedIds.map((id) => pads.find((d) => d.id === id)).filter(Boolean);
         if (active.length === 0) continue;
 
-        // Combine every selected device's axes/buttons, in selection order,
-        // into one payload, same as before. Each axis first checks whether
-        // the active mode binds it to an advanced-mapping sequence; if not,
-        // it falls back to the legacy invert/deadzone/curve settings exactly
-        // as it always has.
-        const axes = active
-          .flatMap((d) =>
-            d.axes.map((v, i) => {
-              const pipeline = runtime?.getPipeline(`${d.id}:axis:${i}`);
-              if (!pipeline) return shapeAxis(v, axisSettingsRef.current[d.id]?.[i]);
-              let shaped = v;
+        // buttonsOut is declared before the axes loop because a Hat Buttons
+        // axis (see below) writes into it too, not just the buttons loop
+        // further down. reservedOutputs tracks every vJoy button slot any
+        // pipeline explicitly claims (Hat Buttons, Tempo, or a plain "presses
+        // vJoy button N"), so the positional fallback for everything else
+        // never recycles the same slot and stomps a value some other input
+        // just wrote this same tick.
+        const buttonsOut = [];
+        const reservedOutputs = new Set();
+        const now = Date.now();
+
+        // Combine every selected device's axes, in selection order, into one
+        // payload, same as before. Each axis first checks whether the active
+        // mode binds it to an advanced-mapping sequence; if not, it falls
+        // back to the legacy invert/deadzone/curve settings exactly as it
+        // always has. An axis whose pipeline is a calibrated Hat Buttons
+        // action is the one exception: it never contributes a shaped value
+        // to the axes array at all, it's not really an axis anymore, its
+        // whole reading is redirected into buttonsOut instead.
+        const axesOut = [];
+        for (const d of active) {
+          for (let i = 0; i < d.axes.length; i++) {
+            const v = d.axes[i];
+            const inputKey = `${d.id}:axis:${i}`;
+            const pipeline = runtime?.getPipeline(inputKey);
+            let handledAsHat = false;
+            let shaped = v;
+            if (pipeline) {
               for (const step of pipeline) {
-                if (step.kind === 'axis') shaped = step.run(shaped);
+                if (step.kind === 'axis') {
+                  shaped = step.run(shaped);
+                } else if (step.kind === 'hat') {
+                  handledAsHat = true;
+                  const direction = classifyHatDirection(v, step.directions);
+                  for (const [dir, outIdx] of Object.entries(step.outputs)) {
+                    if (Number.isInteger(outIdx)) {
+                      buttonsOut[outIdx] = dir === direction;
+                      reservedOutputs.add(outIdx);
+                    }
+                  }
+                }
               }
-              return shaped;
-            })
-          )
-          .slice(0, MAX_AXES);
+            } else {
+              shaped = shapeAxis(v, axisSettingsRef.current[d.id]?.[i]);
+            }
+            if (!handledAsHat) axesOut.push(shaped);
+          }
+        }
+        const axes = axesOut.slice(0, MAX_AXES);
+
+        // Read-only pre-scan so every button pipeline's claimed output slot
+        // (a plain "presses vJoy button N", or Tempo's tap/hold slots) is
+        // known before any positional assignment happens below, this never
+        // touches prevButtonsRef/tempoStateRef, it only looks at what each
+        // pipeline is capable of writing to.
+        for (const d of active) {
+          for (let i = 0; i < d.buttons.length; i++) {
+            const pipeline = runtime?.getPipeline(`${d.id}:button:${i}`);
+            if (!pipeline) continue;
+            for (const step of pipeline) {
+              if (step.kind === 'terminal' && Number.isInteger(step.outputIndex)) reservedOutputs.add(step.outputIndex);
+              else if (step.kind === 'tempo') {
+                if (Number.isInteger(step.tapOutputIndex)) reservedOutputs.add(step.tapOutputIndex);
+                if (Number.isInteger(step.holdOutputIndex)) reservedOutputs.add(step.holdOutputIndex);
+              }
+            }
+          }
+        }
 
         // Most buttons still forward positionally (cursor-based, same order
         // as before). A button whose pipeline ends in an explicit Map to
         // vJoy target instead jumps straight to that output slot and never
         // consumes a cursor position, so everything else still shifts up to
         // fill the gap exactly as if that button had never been selected.
-        const buttonsOut = [];
+        // The cursor also skips any slot reservedOutputs already claims
+        // (Hat Buttons or another button's explicit target), so a plain
+        // unmapped button never gets positionally assigned onto a vJoy slot
+        // something else is actively driving.
         let cursor = 0;
-        const now = Date.now();
+        function nextCursorSlot() {
+          while (reservedOutputs.has(cursor)) cursor += 1;
+          return cursor++;
+        }
         for (const d of active) {
           for (let i = 0; i < d.buttons.length; i++) {
             const b = d.buttons[i];
@@ -211,8 +267,7 @@ export default function Mapping() {
             } else if (outputIndex !== null) {
               buttonsOut[outputIndex] = b.pressed;
             } else {
-              buttonsOut[cursor] = b.pressed;
-              cursor += 1;
+              buttonsOut[nextCursorSlot()] = b.pressed;
             }
           }
         }
@@ -502,16 +557,27 @@ export default function Mapping() {
         ]}
       />
 
+      {/*
+        The Advanced Mapping pane stays mounted permanently once a profile is
+        selected (toggled with a plain className instead of being swapped in
+        and out by AnimatePresence's key). Keying it to mappingTab used to
+        unmount/remount AdvancedMappingTab on every tab switch, which
+        re-initialized its local editing state from the gameProfiles snapshot
+        at that instant, if a save's IPC round trip hadn't landed yet, the
+        remount would silently resurrect a stale, pre-edit copy of the
+        profile, undoing whatever was just captured (Hat Buttons calibration
+        was the case that surfaced it).
+      */}
       <AnimatePresence mode="wait">
-        <motion.div
-          key={mappingTab}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-        >
-          {mappingTab === 'live' &&
-            (noDevices ? (
+        {mappingTab === 'live' && (
+          <motion.div
+            key="live"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+          >
+            {noDevices ? (
               <Card hover={false} className="flex flex-col items-center gap-3 px-10 py-10 text-center">
                 <Gamepad2 size={28} className="text-mim-muted" />
                 <p className="text-mim-muted">No physical devices detected yet.</p>
@@ -623,20 +689,22 @@ export default function Mapping() {
                 </div>
               )}
               </>
-            ))}
-
-          {mappingTab === 'advanced' &&
-            (activeProfile ? (
-              <AdvancedMappingTab profile={activeProfile} devices={devices} onSaved={refreshGameProfiles} />
-            ) : (
-              <Card hover={false} className="flex flex-col items-center gap-3 px-10 py-10 text-center">
-                <p className="text-sm text-mim-muted">
-                  Save a game profile in Live Mapping first, then come back here to add modes and advanced actions to it.
-                </p>
-              </Card>
-            ))}
-        </motion.div>
+            )}
+          </motion.div>
+        )}
       </AnimatePresence>
+
+      <div className={mappingTab === 'advanced' ? 'block' : 'hidden'}>
+        {activeProfile ? (
+          <AdvancedMappingTab profile={activeProfile} devices={devices} onSaved={refreshGameProfiles} />
+        ) : (
+          <Card hover={false} className="flex flex-col items-center gap-3 px-10 py-10 text-center">
+            <p className="text-sm text-mim-muted">
+              Save a game profile in Live Mapping first, then come back here to add modes and advanced actions to it.
+            </p>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
