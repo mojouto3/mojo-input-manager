@@ -13,7 +13,7 @@
 [![License](https://img.shields.io/badge/license-MIT-3ddb3d?style=flat-square)](LICENSE)
 [![Made by](https://img.shields.io/badge/made%20by-mojomultimedia-black?style=flat-square)](https://github.com/mojouto3)
 
-[Features](#features) · [Installation](#installation) · [Usage](#usage) · [Building from Source](#building-from-source)
+[Features](#features) · [Installation](#installation) · [Usage](#usage) · [Building from Source](#building-from-source) · [Changelog](CHANGELOG.md)
 
 ---
 
@@ -48,8 +48,17 @@ Built so you set things up once, then forget about it.
 - Shows real-time axes and button state for every selected device
 - Combine multiple physical devices onto a single vJoy virtual device: select more than one, and their axes/buttons are forwarded together as one combined input
 - Remembers which physical device (or combination) was last mapped to which vJoy target, and restores that selection automatically the next time it sees the same devices connected, no need to click through it again
+- Per-axis invert, deadzone, and response curve shaping
 - Forwards input with a single Start Mapping toggle
 - Automatically excludes vJoy's own virtual devices from the physical device list, so you can't accidentally map a device to itself
+- Save named game profiles and switch between them with one click
+
+### Advanced Mapping
+- Per-input rules described in plain sentences ("Normally, it does X", "While holding [button], instead it does Y"), no modes/bindings/sequences to learn
+- One designated Shift key per profile: hold it to switch any other input to its alternate behavior
+- Tempo: a quick tap and a press held past a threshold press two different vJoy buttons on the same physical button
+- Hat Buttons: for hardware that reports a directional hat as a single axis instead of continuous movement, calibrated live per device with a hands-free wizard
+- "Test in Windows" shortcut opens the native Game Controllers panel to verify live output without leaving the app
 
 ### Device Filtering (HidHide)
 - Lists all gaming HID devices with their current Hidden/Visible status, with a one-click toggle
@@ -59,6 +68,8 @@ Built so you set things up once, then forget about it.
 
 ### Settings
 - Switch the app's accent color between neon green and electric cyan
+- Launch at Windows startup
+- Export/import your device filtering profiles and mappings, for backups or moving to a new setup on the same hardware
 - See the current app version and check for updates on demand
 
 ### Runs in the background
@@ -84,6 +95,9 @@ Open the tab, click **Add Device** to create the next free vJoy virtual controll
 
 ### Mapping
 Plug in a controller (move a stick or press a button if it doesn't show up right away), select one or more devices to combine, pick a target vJoy device from **Forward to**, and click **Start Mapping**. Next time you launch MIM with the same devices connected, the selection and target come back on their own.
+
+### Advanced Mapping
+Save a game profile in Live Mapping first, then switch to the **Advanced Mapping** tab. Pick an input to set what it normally does, designate a **Shift key** if you want alternate behavior on other inputs while it's held, and use **Test in Windows** to confirm the vJoy output without leaving the app.
 
 ### Device Filtering
 Hide the physical devices you don't want other apps to see, turn **Cloaking** on, and add any application that should still be allowed to see everything to the **Allowed Applications** list. Save a **Profile** per game to apply the right combination in one click.

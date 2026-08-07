@@ -1,6 +1,6 @@
 {
   "name": "mojo-input-manager",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Set up your controllers once, then choose exactly which ones each game sees.",
   "main": "src/main/main.js",
   "scripts": {
