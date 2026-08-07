@@ -2,6 +2,16 @@
 
 All notable changes to Mojo Input Manager are documented here.
 
+## [1.2.0] - 2026-08-07
+
+### Added
+- **Macro** action: a fixed sequence of press/release/wait steps played on every physical button press, targeting any vJoy button per step
+- A live **output indicator** in the Advanced Mapping editor showing which vJoy button a Macro, Tempo, or Hat Buttons pipeline currently has asserted, no need to keep Windows' Game Controllers panel open to check
+
+### Fixed
+- Switching between action types (Single Press/Tap-Hold/Macro, and Response Curve/Deadzone/Hat Buttons) no longer wipes the other type's saved configuration
+- Smoother, non-abrupt transitions when switching between action types
+
 ## [1.1.0] - 2026-08-07
 
 ### Added

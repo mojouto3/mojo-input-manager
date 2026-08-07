@@ -58,6 +58,8 @@ Built so you set things up once, then forget about it.
 - One designated Shift key per profile: hold it to switch any other input to its alternate behavior
 - Tempo: a quick tap and a press held past a threshold press two different vJoy buttons on the same physical button
 - Hat Buttons: for hardware that reports a directional hat as a single axis instead of continuous movement, calibrated live per device with a hands-free wizard
+- Macro: a fixed sequence of press/release/wait steps played on every physical button press
+- A live output indicator shows which vJoy button a Macro, Tempo, or Hat Buttons pipeline currently has asserted
 - "Test in Windows" shortcut opens the native Game Controllers panel to verify live output without leaving the app
 
 ### Device Filtering (HidHide)
