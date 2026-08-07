@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld('mim', {
   mappingSetups: {
     list: () => ipcRenderer.invoke('mapping-setups:list'),
     create: (data) => ipcRenderer.invoke('mapping-setups:create', data),
+    update: (id, patch) => ipcRenderer.invoke('mapping-setups:update', { id, patch }),
     remove: (id) => ipcRenderer.invoke('mapping-setups:remove', id)
   },
   axisSettings: {

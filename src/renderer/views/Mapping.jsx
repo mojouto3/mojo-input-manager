@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Gamepad2, Play, Square, Plus, X, ArrowLeftRight, Save, Trash2, SlidersHorizontal } from 'lucide-react';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import Select from '../components/Select';
 import Toggle from '../components/Toggle';
+import Tabs from '../components/Tabs';
+import AdvancedMappingTab from '../components/mapping/AdvancedMappingTab';
+import { shapeValue as shapeAxis, createModeRuntime, DEFAULT_MODE_ID } from '../lib/mappingEngine';
 
 const mim = typeof window !== 'undefined' ? window.mim : undefined;
 const MAX_AXES = 8;
@@ -27,23 +30,6 @@ function sameSet(a, b) {
 }
 
 const DEFAULT_AXIS_SETTINGS = { invert: false, deadzone: 0, curve: 1 };
-
-// Applied to a raw axis reading before it's combined and sent to vJoy (and
-// mirrored in the live preview, so what you see matches what's felt).
-function shapeAxis(value, settings) {
-  if (!settings) return value;
-  let v = settings.invert ? -value : value;
-  const dz = settings.deadzone || 0;
-  if (dz > 0) {
-    const abs = Math.abs(v);
-    v = abs < dz ? 0 : Math.sign(v) * ((abs - dz) / (1 - dz));
-  }
-  const curve = settings.curve || 1;
-  if (curve !== 1) {
-    v = Math.sign(v) * Math.abs(v) ** curve;
-  }
-  return Math.max(-1, Math.min(1, v));
-}
 
 function readGamepads() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -70,9 +56,21 @@ export default function Mapping() {
   const [profileNameInput, setProfileNameInput] = useState('');
   const [activeProfileId, setActiveProfileId] = useState(null);
   const [axisSettingsMap, setAxisSettingsMap] = useState({});
+  const [activeModeId, setActiveModeId] = useState(DEFAULT_MODE_ID);
+  const [mappingTab, setMappingTab] = useState('live');
   const mappingsRef = useRef([]);
   const axisSettingsRef = useRef({});
   const autoRestoredRef = useRef(false);
+  // Advanced-mapping runtime for whichever saved game profile is currently
+  // applied (see applyGameProfile). Rebuilt whenever the active profile or
+  // its saved data changes; null means "no advanced profile active", in
+  // which case every input just falls back to the legacy axisSettingsMap path.
+  const runtimeRef = useRef(null);
+  // A Change Mode action writes here instead of mutating the runtime mid-tick;
+  // it's applied once at the very end of tick(), i.e. starting next tick, so
+  // every input this tick still resolves against one consistent mode.
+  const pendingModeChangeRef = useRef(null);
+  const prevButtonsRef = useRef(new Map());
 
   useEffect(() => {
     axisSettingsRef.current = axisSettingsMap;
@@ -95,26 +93,101 @@ export default function Mapping() {
     mappingsRef.current = mappings;
   }, [mappings]);
 
+  // Rebuilds the advanced-mapping runtime whenever the active game profile
+  // (or its saved modes/library/sequences/bindings) changes. A profile with
+  // no advanced data still normalizes to an implicit single "base" mode with
+  // no bindings, so getPipeline() just returns null for everything and every
+  // input falls through to the legacy per-axis-settings path below.
+  useEffect(() => {
+    if (!activeProfileId) {
+      runtimeRef.current = null;
+      setActiveModeId(DEFAULT_MODE_ID);
+      return;
+    }
+    const setup = gameProfiles.find((p) => p.id === activeProfileId);
+    runtimeRef.current = setup ? createModeRuntime(setup) : null;
+    setActiveModeId(runtimeRef.current?.activeModeId ?? DEFAULT_MODE_ID);
+  }, [activeProfileId, gameProfiles]);
+
   useEffect(() => {
     function tick() {
       const pads = readGamepads();
       setDevices(pads);
+      const runtime = runtimeRef.current;
+
       for (const slot of mappingsRef.current) {
         if (!slot.isLive || !slot.targetDeviceId) continue;
         const active = slot.selectedIds.map((id) => pads.find((d) => d.id === id)).filter(Boolean);
         if (active.length === 0) continue;
-        // Combine every selected device's axes/buttons, in selection order, into
-        // one payload. This is how several physical devices feed a single vJoy
-        // target: each one contributes the next slice of axes/buttons. Each
-        // axis is shaped (invert/deadzone/curve) using that device's own
-        // saved settings before it's combined.
-        mim.mapping.feed({
-          deviceId: Number(slot.targetDeviceId),
-          axes: active
-            .flatMap((d) => d.axes.map((v, i) => shapeAxis(v, axisSettingsRef.current[d.id]?.[i])))
-            .slice(0, MAX_AXES),
-          buttons: active.flatMap((d) => d.buttons.map((b) => b.pressed))
-        });
+
+        // Combine every selected device's axes/buttons, in selection order,
+        // into one payload, same as before. Each axis first checks whether
+        // the active mode binds it to an advanced-mapping sequence; if not,
+        // it falls back to the legacy invert/deadzone/curve settings exactly
+        // as it always has.
+        const axes = active
+          .flatMap((d) =>
+            d.axes.map((v, i) => {
+              const pipeline = runtime?.getPipeline(`${d.id}:axis:${i}`);
+              if (!pipeline) return shapeAxis(v, axisSettingsRef.current[d.id]?.[i]);
+              let shaped = v;
+              for (const step of pipeline) {
+                if (step.kind === 'axis') shaped = step.run(shaped);
+              }
+              return shaped;
+            })
+          )
+          .slice(0, MAX_AXES);
+
+        // Most buttons still forward positionally (cursor-based, same order
+        // as before). A button whose pipeline ends in an explicit Map to
+        // vJoy target instead jumps straight to that output slot and never
+        // consumes a cursor position, so everything else still shifts up to
+        // fill the gap exactly as if that button had never been selected.
+        const buttonsOut = [];
+        let cursor = 0;
+        for (const d of active) {
+          for (let i = 0; i < d.buttons.length; i++) {
+            const b = d.buttons[i];
+            const inputKey = `${d.id}:button:${i}`;
+            const pipeline = runtime?.getPipeline(inputKey);
+            let outputIndex = null;
+            if (pipeline) {
+              const wasPressed = prevButtonsRef.current.get(inputKey) ?? false;
+              const edge = b.pressed && !wasPressed;
+              const releaseEdge = !b.pressed && wasPressed;
+              for (const step of pipeline) {
+                if (step.kind === 'event') {
+                  step.run({
+                    edge,
+                    releaseEdge,
+                    queueModeChange: (modeId) => {
+                      if (modeId) pendingModeChangeRef.current = modeId;
+                    }
+                  });
+                } else if (step.kind === 'terminal' && Number.isInteger(step.outputIndex)) {
+                  outputIndex = step.outputIndex;
+                }
+              }
+              prevButtonsRef.current.set(inputKey, b.pressed);
+            }
+            if (outputIndex !== null) {
+              buttonsOut[outputIndex] = b.pressed;
+            } else {
+              buttonsOut[cursor] = b.pressed;
+              cursor += 1;
+            }
+          }
+        }
+        const buttons = Array.from({ length: buttonsOut.length }, (_, i) => buttonsOut[i] ?? false);
+
+        mim.mapping.feed({ deviceId: Number(slot.targetDeviceId), axes, buttons });
+      }
+
+      if (runtime && pendingModeChangeRef.current) {
+        runtime.setActiveMode(pendingModeChangeRef.current);
+        setActiveModeId(runtime.activeModeId);
+        pendingModeChangeRef.current = null;
       }
     }
     const interval = setInterval(tick, TICK_INTERVAL_MS);
@@ -357,25 +430,8 @@ export default function Mapping() {
     refreshGameProfiles();
   }
 
-  if (devices.length === 0) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Mapping</h1>
-          <p className="mt-1 text-sm text-mim-muted">
-            Select one or more physical devices to combine onto a vJoy virtual device.
-          </p>
-        </div>
-        <Card hover={false} className="flex flex-col items-center gap-3 px-10 py-10 text-center">
-          <Gamepad2 size={28} className="text-mim-muted" />
-          <p className="text-mim-muted">No physical devices detected yet.</p>
-          <p className="text-xs text-mim-muted">
-            Plug in a controller and move a stick or press a button. Some devices only appear after their first input.
-          </p>
-        </Card>
-      </div>
-    );
-  }
+  const activeProfile = gameProfiles.find((p) => p.id === activeProfileId);
+  const noDevices = devices.length === 0;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -387,118 +443,163 @@ export default function Mapping() {
             second vJoy device at the same time.
           </p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={addMapping}
-          className="glass-surface flex h-9 shrink-0 items-center gap-1.5 rounded-full px-4 text-xs font-semibold text-white"
-        >
-          <Plus size={13} />
-          Add Mapping
-        </motion.button>
+        {mappingTab === 'live' && (
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={addMapping}
+            className="glass-surface flex h-9 shrink-0 items-center gap-1.5 rounded-full px-4 text-xs font-semibold text-white"
+          >
+            <Plus size={13} />
+            Add Mapping
+          </motion.button>
+        )}
       </div>
 
-      <Card hover={false} className="mb-6 p-5">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <span className="text-xs font-semibold uppercase tracking-wide text-mim-muted">Game Profiles</span>
-          <button
-            onClick={() => setShowSaveProfile((v) => !v)}
-            className="flex items-center gap-1.5 text-xs font-medium text-mim-muted transition-colors hover:text-white"
-          >
-            <Save size={13} />
-            Save current as...
-          </button>
-        </div>
+      <Tabs
+        activeTab={mappingTab}
+        onChange={setMappingTab}
+        tabs={[
+          { id: 'live', label: 'Live Mapping' },
+          { id: 'advanced', label: 'Advanced Mapping' }
+        ]}
+      />
 
-        {showSaveProfile && (
-          <div className="mb-3 flex items-center gap-2">
-            <input
-              autoFocus
-              value={profileNameInput}
-              onChange={(e) => setProfileNameInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && saveCurrentAsProfile()}
-              placeholder="e.g. Star Citizen"
-              className="glass-surface flex-1 rounded-md px-3 py-2 text-sm text-white outline-none"
-            />
-            <button
-              onClick={saveCurrentAsProfile}
-              disabled={!profileNameInput.trim()}
-              className="glass-surface flex h-9 items-center rounded-md px-3 text-xs font-semibold text-white disabled:opacity-50"
-            >
-              Save
-            </button>
-          </div>
-        )}
-
-        {gameProfiles.length === 0 ? (
-          <p className="text-sm text-mim-muted">
-            No saved profiles yet. Set up your mappings below, then save them here for one-click switching per game.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {gameProfiles.map((setup) => {
-              const isActive = activeProfileId === setup.id;
-              return (
-                <div
-                  key={setup.id}
-                  className={`group flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors ${
-                    isActive
-                      ? 'border border-mim-accent/40 bg-mim-accent/10 text-white shadow-[0_0_10px_rgba(var(--color-mim-accent-rgb),0.15)]'
-                      : 'glass-surface text-white hover:border-mim-accent/40'
-                  }`}
-                >
-                  <button onClick={() => applyGameProfile(setup)} className="font-medium">
-                    {setup.name}
-                  </button>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={mappingTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+        >
+          {mappingTab === 'live' &&
+            (noDevices ? (
+              <Card hover={false} className="flex flex-col items-center gap-3 px-10 py-10 text-center">
+                <Gamepad2 size={28} className="text-mim-muted" />
+                <p className="text-mim-muted">No physical devices detected yet.</p>
+                <p className="text-xs text-mim-muted">
+                  Plug in a controller and move a stick or press a button. Some devices only appear after their first input.
+                </p>
+              </Card>
+            ) : (
+              <>
+              <Card hover={false} className="mb-6 p-5">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-mim-muted">Game Profiles</span>
                   <button
-                    onClick={() => deleteGameProfile(setup.id)}
-                    title="Delete this profile"
-                    className="text-mim-muted opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                    onClick={() => setShowSaveProfile((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-mim-muted transition-colors hover:text-white"
                   >
-                    <Trash2 size={12} />
+                    <Save size={13} />
+                    Save current as...
                   </button>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
 
-      {mappings.length === 0 ? (
-        <Card hover={false} className="flex flex-col items-center gap-3 px-10 py-10 text-center">
-          <p className="text-sm text-mim-muted">Click "Add Mapping" to forward a device to a vJoy target.</p>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {mappings.map((slot, index) => (
-            <MappingSlotCard
-              key={slot.id}
-              slot={slot}
-              index={index}
-              devices={devices}
-              vjoyDevices={vjoyDevices}
-              takenDevices={new Set(mappings.filter((m) => m.id !== slot.id).flatMap((m) => m.selectedIds))}
-              takenTargets={new Set(
-                mappings.filter((m) => m.id !== slot.id && m.targetDeviceId).map((m) => m.targetDeviceId)
+                {showSaveProfile && (
+                  <div className="mb-3 flex items-center gap-2">
+                    <input
+                      autoFocus
+                      value={profileNameInput}
+                      onChange={(e) => setProfileNameInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && saveCurrentAsProfile()}
+                      placeholder="e.g. Star Citizen"
+                      className="glass-surface flex-1 rounded-md px-3 py-2 text-sm text-white outline-none"
+                    />
+                    <button
+                      onClick={saveCurrentAsProfile}
+                      disabled={!profileNameInput.trim()}
+                      className="glass-surface flex h-9 items-center rounded-md px-3 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
+
+                {gameProfiles.length === 0 ? (
+                  <p className="text-sm text-mim-muted">
+                    No saved profiles yet. Set up your mappings below, then save them here for one-click switching per game.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {gameProfiles.map((setup) => {
+                      const isActive = activeProfileId === setup.id;
+                      return (
+                        <div
+                          key={setup.id}
+                          className={`group flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                            isActive
+                              ? 'border border-mim-accent/40 bg-mim-accent/10 text-white shadow-[0_0_10px_rgba(var(--color-mim-accent-rgb),0.15)]'
+                              : 'glass-surface text-white hover:border-mim-accent/40'
+                          }`}
+                        >
+                          <button onClick={() => applyGameProfile(setup)} className="font-medium">
+                            {setup.name}
+                          </button>
+                          <button
+                            onClick={() => deleteGameProfile(setup.id)}
+                            title="Delete this profile"
+                            className="text-mim-muted opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Card>
+
+              {mappings.length === 0 ? (
+                <Card hover={false} className="flex flex-col items-center gap-3 px-10 py-10 text-center">
+                  <p className="text-sm text-mim-muted">Click "Add Mapping" to forward a device to a vJoy target.</p>
+                </Card>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {mappings.map((slot, index) => (
+                    <MappingSlotCard
+                      key={slot.id}
+                      slot={slot}
+                      index={index}
+                      devices={devices}
+                      vjoyDevices={vjoyDevices}
+                      takenDevices={new Set(mappings.filter((m) => m.id !== slot.id).flatMap((m) => m.selectedIds))}
+                      takenTargets={new Set(
+                        mappings.filter((m) => m.id !== slot.id && m.targetDeviceId).map((m) => m.targetDeviceId)
+                      )}
+                      remembered={
+                        slot.targetDeviceId &&
+                        savedMappings.some(
+                          (m) => sameSet(m.physicalIds, slot.selectedIds) && String(m.targetDeviceId) === slot.targetDeviceId
+                        )
+                      }
+                      canSwap={index < mappings.length - 1}
+                      onToggleDevice={(deviceId) => toggleDevice(slot.id, deviceId)}
+                      onSetTarget={(value) => setTarget(slot.id, value)}
+                      onToggleLive={() => toggleLive(slot.id)}
+                      onRemove={() => removeMapping(slot.id)}
+                      onSwapWithNext={() => swapTargets(index, index + 1)}
+                      axisSettingsMap={axisSettingsMap}
+                      onSetAxisSetting={setAxisSetting}
+                    />
+                  ))}
+                </div>
               )}
-              remembered={
-                slot.targetDeviceId &&
-                savedMappings.some(
-                  (m) => sameSet(m.physicalIds, slot.selectedIds) && String(m.targetDeviceId) === slot.targetDeviceId
-                )
-              }
-              canSwap={index < mappings.length - 1}
-              onToggleDevice={(deviceId) => toggleDevice(slot.id, deviceId)}
-              onSetTarget={(value) => setTarget(slot.id, value)}
-              onToggleLive={() => toggleLive(slot.id)}
-              onRemove={() => removeMapping(slot.id)}
-              onSwapWithNext={() => swapTargets(index, index + 1)}
-              axisSettingsMap={axisSettingsMap}
-              onSetAxisSetting={setAxisSetting}
-            />
-          ))}
-        </div>
-      )}
+              </>
+            ))}
+
+          {mappingTab === 'advanced' &&
+            (activeProfile ? (
+              <AdvancedMappingTab profile={activeProfile} devices={devices} onSaved={refreshGameProfiles} />
+            ) : (
+              <Card hover={false} className="flex flex-col items-center gap-3 px-10 py-10 text-center">
+                <p className="text-sm text-mim-muted">
+                  Save a game profile in Live Mapping first, then come back here to add modes and advanced actions to it.
+                </p>
+              </Card>
+            ))}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
