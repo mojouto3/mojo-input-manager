@@ -212,41 +212,61 @@ function ShapeControl({ inputKey, action, devices, layoutId, onChange }) {
           // silently wiped a whole calibration. Now the outgoing type's
           // config is stashed on the action itself and restored if the user
           // comes back to it, only a genuinely new type gets the blank default.
-          const shapeStash = { ...(action?.shapeStash ?? {}), [type]: config };
-          onChange({ type: t, config: shapeStash[t] ?? defaultShapeConfig(t), shapeStash });
+          const typeStash = { ...(action?.typeStash ?? {}), [type]: config };
+          onChange({ type: t, config: typeStash[t] ?? defaultShapeConfig(t), typeStash });
         }}
       />
-      {type === 'responseCurve' && (
-        <>
-          <ShapePreview config={{ curve: config.curve ?? 1 }} />
-          <input
-            type="range"
-            min="0.3"
-            max="3"
-            step="0.1"
-            value={config.curve ?? 1}
-            onChange={(e) => onChange({ type, config: { curve: Number(e.target.value) } })}
-            className="w-28 accent-mim-accent"
-          />
-          <span className="w-10 shrink-0 text-right text-xs text-mim-muted">{(config.curve ?? 1).toFixed(1)}x</span>
-        </>
-      )}
-      {type === 'deadzone' && (
-        <>
-          <ShapePreview config={{ deadzone: config.deadzone ?? 0 }} />
-          <input
-            type="range"
-            min="0"
-            max="0.5"
-            step="0.01"
-            value={config.deadzone ?? 0}
-            onChange={(e) => onChange({ type, config: { deadzone: Number(e.target.value) } })}
-            className="w-28 accent-mim-accent"
-          />
-          <span className="w-10 shrink-0 text-right text-xs text-mim-muted">{Math.round((config.deadzone ?? 0) * 100)}%</span>
-        </>
-      )}
-      {type === 'hatButtons' && <HatButtonsControl inputKey={inputKey} action={action} devices={devices} onChange={onChange} />}
+      <AnimatePresence mode="wait" initial={false}>
+        {type === 'responseCurve' && (
+          <motion.div
+            key="responseCurve"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            className="flex flex-wrap items-center gap-3"
+          >
+            <ShapePreview config={{ curve: config.curve ?? 1 }} />
+            <input
+              type="range"
+              min="0.3"
+              max="3"
+              step="0.1"
+              value={config.curve ?? 1}
+              onChange={(e) => onChange({ type, config: { curve: Number(e.target.value) } })}
+              className="w-28 accent-mim-accent"
+            />
+            <span className="w-10 shrink-0 text-right text-xs text-mim-muted">{(config.curve ?? 1).toFixed(1)}x</span>
+          </motion.div>
+        )}
+        {type === 'deadzone' && (
+          <motion.div
+            key="deadzone"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            className="flex flex-wrap items-center gap-3"
+          >
+            <ShapePreview config={{ deadzone: config.deadzone ?? 0 }} />
+            <input
+              type="range"
+              min="0"
+              max="0.5"
+              step="0.01"
+              value={config.deadzone ?? 0}
+              onChange={(e) => onChange({ type, config: { deadzone: Number(e.target.value) } })}
+              className="w-28 accent-mim-accent"
+            />
+            <span className="w-10 shrink-0 text-right text-xs text-mim-muted">{Math.round((config.deadzone ?? 0) * 100)}%</span>
+          </motion.div>
+        )}
+        {type === 'hatButtons' && (
+          <motion.div key="hatButtons" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="w-full">
+            <HatButtonsControl inputKey={inputKey} action={action} devices={devices} onChange={onChange} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -258,13 +278,95 @@ const VJOY_BUTTON_OPTIONS = Array.from({ length: 32 }, (_, i) => ({ value: i, la
 
 const BUTTON_TYPES = [
   { value: 'mapToVjoy', label: 'Single Press' },
-  { value: 'tempo', label: 'Tap / Hold' }
+  { value: 'tempo', label: 'Tap / Hold' },
+  { value: 'macro', label: 'Macro' }
 ];
 
 function defaultButtonAction(type) {
-  return type === 'tempo'
-    ? { type: 'tempo', config: { thresholdMs: 250, tapOutputIndex: 0, holdOutputIndex: 1 } }
-    : { type: 'mapToVjoy', config: { outputIndex: 0 } };
+  if (type === 'tempo') return { type: 'tempo', config: { thresholdMs: 250, tapOutputIndex: 0, holdOutputIndex: 1 } };
+  if (type === 'macro') return { type: 'macro', config: { steps: [] } };
+  return { type: 'mapToVjoy', config: { outputIndex: 0 } };
+}
+
+const MACRO_STEP_TYPES = [
+  { value: 'press', label: 'Press' },
+  { value: 'release', label: 'Release' },
+  { value: 'wait', label: 'Wait' }
+];
+
+function defaultMacroStep(type) {
+  return type === 'wait' ? { type: 'wait', ms: 100 } : { type, outputIndex: 0 };
+}
+
+// A fixed sequence of "press vJoy button", "release vJoy button", and "wait"
+// steps, played from the top every time the physical button is pressed. No
+// branching or looping, matching the same "list of steps, not a node graph"
+// scoping every other action in this file already sticks to.
+function MacroControl({ config, onChange, activeOutputs }) {
+  const steps = Array.isArray(config.steps) ? config.steps : [];
+  const active = new Set(activeOutputs ?? []);
+
+  function setSteps(next) {
+    onChange({ type: 'macro', config: { steps: next } });
+  }
+  function setStepType(i, type) {
+    setSteps(steps.map((s, idx) => (idx === i ? defaultMacroStep(type) : s)));
+  }
+  function updateStep(i, patch) {
+    setSteps(steps.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  }
+  function removeStep(i) {
+    setSteps(steps.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <div className="flex w-full flex-col gap-2">
+      {steps.length === 0 && <p className="text-xs text-mim-muted">No steps yet, add one below.</p>}
+      {steps.map((step, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2">
+          <span className="w-5 shrink-0 text-right text-xs text-mim-muted">{i + 1}.</span>
+          <Select value={step.type} onChange={(t) => setStepType(i, t)} options={MACRO_STEP_TYPES} className="w-24 shrink-0" />
+          {step.type === 'wait' ? (
+            <>
+              <input
+                type="range"
+                min="10"
+                max="2000"
+                step="10"
+                value={step.ms ?? 100}
+                onChange={(e) => updateStep(i, { ms: Number(e.target.value) })}
+                className="w-28 shrink-0 accent-mim-accent"
+              />
+              <span className="w-14 shrink-0 text-xs text-mim-muted">{step.ms ?? 100}ms</span>
+            </>
+          ) : (
+            <>
+              <Select
+                value={step.outputIndex ?? 0}
+                onChange={(v) => updateStep(i, { outputIndex: Number(v) })}
+                options={VJOY_BUTTON_OPTIONS}
+                className="w-36 shrink-0"
+              />
+              {active.has(step.outputIndex) && (
+                <span className="shrink-0 rounded-full bg-mim-accent/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-mim-accent">
+                  On
+                </span>
+              )}
+            </>
+          )}
+          <button onClick={() => removeStep(i)} title="Remove this step" className="ml-auto shrink-0 text-mim-muted transition-colors hover:text-red-400">
+            <X size={14} />
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() => setSteps([...steps, defaultMacroStep('press')])}
+        className="w-fit shrink-0 rounded-full bg-mim-accent/15 px-3 py-1.5 text-xs font-semibold text-mim-accent"
+      >
+        + Add step
+      </button>
+    </div>
+  );
 }
 
 // Button-only. Either a single vJoy button it presses (browsed the same
@@ -272,63 +374,96 @@ function defaultButtonAction(type) {
 // Tempo: a quick tap and a press held past a threshold land on two
 // different vJoy buttons, still described as one sentence, not a separate
 // menu, since Tempo is just a different flavor of "what this button does".
-function ButtonControl({ action, layoutId, onChange }) {
-  const type = action?.type === 'tempo' ? 'tempo' : 'mapToVjoy';
+function ButtonControl({ action, layoutId, onChange, activeOutputs }) {
+  const type = action?.type === 'tempo' ? 'tempo' : action?.type === 'macro' ? 'macro' : 'mapToVjoy';
   const config = action?.config ?? {};
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <SegmentedControl layoutId={layoutId} options={BUTTON_TYPES} value={type} onChange={(t) => onChange(defaultButtonAction(t))} />
-      {type === 'mapToVjoy' && (
-        <span className="flex shrink-0 items-center gap-2">
-          <span className="text-sm text-mim-muted">presses</span>
-          <Select
-            value={config.outputIndex ?? 0}
-            onChange={(v) => onChange({ type: 'mapToVjoy', config: { outputIndex: Number(v) } })}
-            options={VJOY_BUTTON_OPTIONS}
-          />
-        </span>
-      )}
-      {type === 'tempo' && (
-        <>
-          <span className="flex shrink-0 items-center gap-2">
-            <span className="text-sm text-mim-muted">tap presses</span>
+      <SegmentedControl
+        layoutId={layoutId}
+        options={BUTTON_TYPES}
+        value={type}
+        onChange={(t) => {
+          if (t === type) return;
+          // Same fix as ShapeControl's type switcher: stash the outgoing
+          // type's config on the action instead of throwing it away, so
+          // bouncing from Macro to Tap/Hold and back doesn't wipe the steps.
+          const typeStash = { ...(action?.typeStash ?? {}), [type]: config };
+          onChange({ ...defaultButtonAction(t), config: typeStash[t] ?? defaultButtonAction(t).config, typeStash });
+        }}
+      />
+      <AnimatePresence mode="wait" initial={false}>
+        {type === 'mapToVjoy' && (
+          <motion.span
+            key="mapToVjoy"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            className="flex shrink-0 items-center gap-2"
+          >
+            <span className="text-sm text-mim-muted">presses</span>
             <Select
-              value={config.tapOutputIndex ?? 0}
-              onChange={(v) => onChange({ type: 'tempo', config: { ...config, tapOutputIndex: Number(v) } })}
+              value={config.outputIndex ?? 0}
+              onChange={(v) => onChange({ type: 'mapToVjoy', config: { outputIndex: Number(v) } })}
               options={VJOY_BUTTON_OPTIONS}
             />
-          </span>
-          <span className="flex shrink-0 items-center gap-2">
-            <span className="text-sm text-mim-muted">holding presses</span>
-            <Select
-              value={config.holdOutputIndex ?? 1}
-              onChange={(v) => onChange({ type: 'tempo', config: { ...config, holdOutputIndex: Number(v) } })}
-              options={VJOY_BUTTON_OPTIONS}
-            />
-          </span>
-          <span className="flex shrink-0 items-center gap-2">
-            <span className="text-sm text-mim-muted">after</span>
-            <input
-              type="range"
-              min="100"
-              max="800"
-              step="50"
-              value={config.thresholdMs ?? 250}
-              onChange={(e) => onChange({ type: 'tempo', config: { ...config, thresholdMs: Number(e.target.value) } })}
-              className="w-24 accent-mim-accent"
-            />
-            <span className="w-14 shrink-0 text-right text-xs text-mim-muted">{config.thresholdMs ?? 250}ms</span>
-          </span>
-        </>
-      )}
+          </motion.span>
+        )}
+        {type === 'tempo' && (
+          <motion.div
+            key="tempo"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            className="flex flex-wrap items-center gap-3"
+          >
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="text-sm text-mim-muted">tap presses</span>
+              <Select
+                value={config.tapOutputIndex ?? 0}
+                onChange={(v) => onChange({ type: 'tempo', config: { ...config, tapOutputIndex: Number(v) } })}
+                options={VJOY_BUTTON_OPTIONS}
+              />
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="text-sm text-mim-muted">holding presses</span>
+              <Select
+                value={config.holdOutputIndex ?? 1}
+                onChange={(v) => onChange({ type: 'tempo', config: { ...config, holdOutputIndex: Number(v) } })}
+                options={VJOY_BUTTON_OPTIONS}
+              />
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="text-sm text-mim-muted">after</span>
+              <input
+                type="range"
+                min="100"
+                max="800"
+                step="50"
+                value={config.thresholdMs ?? 250}
+                onChange={(e) => onChange({ type: 'tempo', config: { ...config, thresholdMs: Number(e.target.value) } })}
+                className="w-24 accent-mim-accent"
+              />
+              <span className="w-14 shrink-0 text-right text-xs text-mim-muted">{config.thresholdMs ?? 250}ms</span>
+            </span>
+          </motion.div>
+        )}
+        {type === 'macro' && (
+          <motion.div key="macro" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="w-full">
+            <MacroControl config={config} onChange={onChange} activeOutputs={activeOutputs} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function ActionControl({ kind, inputKey, action, devices, layoutId, onChange }) {
+function ActionControl({ kind, inputKey, action, devices, layoutId, onChange, activeOutputs }) {
   return kind === 'button' ? (
-    <ButtonControl action={action} layoutId={layoutId} onChange={onChange} />
+    <ButtonControl action={action} layoutId={layoutId} onChange={onChange} activeOutputs={activeOutputs} />
   ) : (
     <ShapeControl inputKey={inputKey} action={action} devices={devices} layoutId={layoutId} onChange={onChange} />
   );
@@ -351,6 +486,7 @@ export default function RuleCard({
   inputIndex,
   rule,
   devices,
+  activeOutputs,
   shiftKey,
   onSetShiftKey,
   onSetBase,
@@ -407,7 +543,7 @@ export default function RuleCard({
         </motion.div>
       )}
 
-      <motion.div layout className="flex flex-wrap items-start gap-3 rounded-xl border border-mim-border bg-mim-surface-light/40 p-3">
+      <motion.div layout className="flex flex-wrap items-start gap-3 overflow-hidden rounded-xl border border-mim-border bg-mim-surface-light/40 p-3">
         <span className="shrink-0 pt-1.5 text-sm text-mim-muted">Normally,</span>
         <AnimatePresence mode="wait" initial={false}>
           {rule.base ? (
@@ -419,7 +555,7 @@ export default function RuleCard({
               transition={{ duration: 0.15 }}
               className="flex flex-1 flex-wrap items-center gap-3"
             >
-              <ActionControl kind={inputKind} inputKey={inputKey} action={rule.base} devices={devices} layoutId={`base-${inputKey}`} onChange={onSetBase} />
+              <ActionControl kind={inputKind} inputKey={inputKey} action={rule.base} devices={devices} activeOutputs={activeOutputs} layoutId={`base-${inputKey}`} onChange={onSetBase} />
               <button onClick={onClearBase} className="ml-auto shrink-0 text-xs text-mim-muted underline underline-offset-2 hover:text-white">
                 Reset
               </button>
@@ -455,7 +591,7 @@ export default function RuleCard({
             transition={{ duration: 0.18 }}
             className="overflow-hidden"
           >
-            <div className="flex flex-wrap items-start gap-3 rounded-xl border border-dashed border-amber-500/30 bg-amber-500/[0.06] p-3">
+            <motion.div layout className="flex flex-wrap items-start gap-3 overflow-hidden rounded-xl border border-dashed border-amber-500/30 bg-amber-500/[0.06] p-3">
               <span className="shrink-0 pt-1.5 text-sm text-mim-muted">Shift version</span>
               <Toggle checked={Boolean(shiftCondition)} onChange={toggleShift} />
               <AnimatePresence initial={false}>
@@ -466,11 +602,11 @@ export default function RuleCard({
                     exit={{ opacity: 0, x: -6 }}
                     transition={{ duration: 0.15 }}
                   >
-                    <ActionControl kind={inputKind} inputKey={inputKey} action={shiftCondition.action} devices={devices} layoutId={`shift-${inputKey}`} onChange={(next) => onSetCondition(shiftKey, next)} />
+                    <ActionControl kind={inputKind} inputKey={inputKey} action={shiftCondition.action} devices={devices} activeOutputs={activeOutputs} layoutId={`shift-${inputKey}`} onChange={(next) => onSetCondition(shiftKey, next)} />
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -486,15 +622,15 @@ export default function RuleCard({
             transition={{ duration: 0.18 }}
             className="overflow-hidden"
           >
-            <div className="flex flex-wrap items-start gap-3 rounded-xl border border-dashed border-amber-500/30 bg-amber-500/[0.06] p-3">
+            <motion.div layout className="flex flex-wrap items-start gap-3 overflow-hidden rounded-xl border border-dashed border-amber-500/30 bg-amber-500/[0.06] p-3">
               <span className="shrink-0 pt-1.5 text-sm text-mim-muted">While holding</span>
               <span className="shrink-0 rounded-full bg-white/8 px-3 py-1 text-xs font-semibold text-white">{describeInputKey(devices, c.triggerKey)}</span>
               <span className="shrink-0 pt-1.5 text-sm text-mim-muted">instead,</span>
-              <ActionControl kind={inputKind} inputKey={inputKey} action={c.action} devices={devices} layoutId={`cond-${c.triggerModeId}-${inputKey}`} onChange={(next) => onSetCondition(c.triggerKey, next)} />
+              <ActionControl kind={inputKind} inputKey={inputKey} action={c.action} devices={devices} activeOutputs={activeOutputs} layoutId={`cond-${c.triggerModeId}-${inputKey}`} onChange={(next) => onSetCondition(c.triggerKey, next)} />
               <button onClick={() => onRemoveCondition(c.triggerModeId)} title="Remove this condition" className="ml-auto shrink-0 pt-1 text-mim-muted transition-colors hover:text-red-400">
                 <X size={14} />
               </button>
-            </div>
+            </motion.div>
           </motion.div>
         ))}
       </AnimatePresence>
