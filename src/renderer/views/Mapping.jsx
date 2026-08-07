@@ -16,6 +16,11 @@ const MAX_AXES = 8;
 // window. setInterval is a plain timer with no such dependency, so mapping
 // keeps feeding vJoy no matter how the window is put aside.
 const TICK_INTERVAL_MS = 16;
+// How long a resolved "tap" stays asserted on its vJoy button. The physical
+// button is already back up by the time a press can be classified as a tap
+// (that's only known once the button releases), so this is a synthetic
+// pulse rather than a mirror of the real press duration.
+const TEMPO_TAP_PULSE_MS = 90;
 
 // vJoy virtual devices (vendor 1234 / product bead) present themselves as regular
 // HID joysticks too, so the Gamepad API reports them alongside real physical devices.
@@ -71,6 +76,9 @@ export default function Mapping() {
   // every input this tick still resolves against one consistent mode.
   const pendingModeChangeRef = useRef(null);
   const prevButtonsRef = useRef(new Map());
+  // Per-button Tempo (tap vs. hold) state: { pressStart, resolved, pulseUntil }
+  // keyed by inputKey, or absent/null between presses.
+  const tempoStateRef = useRef(new Map());
 
   useEffect(() => {
     axisSettingsRef.current = axisSettingsMap;
@@ -146,12 +154,14 @@ export default function Mapping() {
         // fill the gap exactly as if that button had never been selected.
         const buttonsOut = [];
         let cursor = 0;
+        const now = Date.now();
         for (const d of active) {
           for (let i = 0; i < d.buttons.length; i++) {
             const b = d.buttons[i];
             const inputKey = `${d.id}:button:${i}`;
             const pipeline = runtime?.getPipeline(inputKey);
             let outputIndex = null;
+            let tempoHandled = false;
             if (pipeline) {
               const wasPressed = prevButtonsRef.current.get(inputKey) ?? false;
               const edge = b.pressed && !wasPressed;
@@ -167,11 +177,38 @@ export default function Mapping() {
                   });
                 } else if (step.kind === 'terminal' && Number.isInteger(step.outputIndex)) {
                   outputIndex = step.outputIndex;
+                } else if (step.kind === 'tempo') {
+                  tempoHandled = true;
+                  let state = tempoStateRef.current.get(inputKey) ?? null;
+                  if (edge) state = { pressStart: now, resolved: null, pulseUntil: 0 };
+                  if (state) {
+                    if (b.pressed && state.resolved === null && now - state.pressStart >= step.thresholdMs) {
+                      state.resolved = 'hold';
+                    }
+                    if (releaseEdge) {
+                      if (state.resolved === null) {
+                        state.resolved = 'tap';
+                        state.pulseUntil = now + TEMPO_TAP_PULSE_MS;
+                      } else if (state.resolved === 'hold') {
+                        state = null;
+                      }
+                    }
+                  }
+                  if (state?.resolved === 'tap' && now >= state.pulseUntil) state = null;
+                  tempoStateRef.current.set(inputKey, state);
+                  if (state?.resolved === 'hold' && Number.isInteger(step.holdOutputIndex)) {
+                    buttonsOut[step.holdOutputIndex] = true;
+                  } else if (state?.resolved === 'tap' && Number.isInteger(step.tapOutputIndex)) {
+                    buttonsOut[step.tapOutputIndex] = true;
+                  }
                 }
               }
               prevButtonsRef.current.set(inputKey, b.pressed);
             }
-            if (outputIndex !== null) {
+            if (tempoHandled) {
+              // Tempo already wrote its own output slot(s) above; this
+              // physical button never also occupies a positional slot.
+            } else if (outputIndex !== null) {
               buttonsOut[outputIndex] = b.pressed;
             } else {
               buttonsOut[cursor] = b.pressed;

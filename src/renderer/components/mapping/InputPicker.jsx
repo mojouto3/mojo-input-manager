@@ -8,13 +8,16 @@ const IDENTIFY_AXIS_THRESHOLD = 0.5;
 // The live chip highlight can't just check "far from zero": a throttle or
 // slider axis often rests away from zero by design, that isn't the axis
 // being touched, it's just where it sits. What actually means "someone is
-// moving this right now" is a change since the last render, so this is a
-// per-tick delta threshold instead. Some hardware (small hat-style
-// mini-sticks in particular) has real sensor jitter even at rest, so a
-// single noisy tick isn't enough either, the delta has to hold for a couple
-// of ticks in a row before it counts as real movement.
-const AXIS_LIVE_DELTA = 0.06;
-const AXIS_LIVE_STREAK = 2;
+// touching this right now" is a change since the last render, so this is a
+// per-tick delta threshold instead, high enough to sit above normal sensor
+// jitter. A hat-style mini-stick reported as a single axis jumps instantly
+// between a handful of fixed values and then holds perfectly still, so
+// requiring the delta to *persist* across ticks (an earlier version of this)
+// misses that kind of input entirely; instead, any single tick that crosses
+// the threshold keeps the chip lit for a short decay window, long enough to
+// see even an instant flick, whether or not the value keeps changing after.
+const AXIS_LIVE_DELTA = 0.08;
+const AXIS_LIVE_DECAY_MS = 220;
 
 function describeAxis(i) {
   return AXIS_NAMES[i] ?? `A${i}`;
@@ -36,34 +39,35 @@ export default function InputPicker({ devices, selectedInputKey, onSelect, bound
   const [identifyStatus, setIdentifyStatus] = useState('');
   const baselineRef = useRef(null);
   const prevAxisValuesRef = useRef({});
-  const axisLiveStreakRef = useRef({});
+  const axisLiveUntilRef = useRef({});
 
   const device = devices.find((d) => d.id === activeDeviceId) ?? devices[0];
 
-  // Recomputes each axis's "moving" streak against last tick's value, then
-  // stores this tick's values for the next comparison. A single noisy
-  // sample only bumps the streak by one, it takes AXIS_LIVE_STREAK
-  // consecutive ticks of real movement before isAxisLive() lights anything up.
+  // Compares this tick's axis values against last tick's, and any axis whose
+  // value jumped past AXIS_LIVE_DELTA gets a fresh "stay lit until" deadline,
+  // so a single instantaneous jump (a hat switch snapping to a new position)
+  // is just as visible as a sustained analog movement, both just decay after
+  // AXIS_LIVE_DECAY_MS of no further change instead of needing to keep moving.
   useEffect(() => {
     const prevValues = prevAxisValuesRef.current;
-    const prevStreaks = axisLiveStreakRef.current;
+    const liveUntil = axisLiveUntilRef.current;
     const nextValues = {};
-    const nextStreaks = {};
+    const now = Date.now();
     for (const d of devices) {
       d.axes.forEach((v, i) => {
         const key = `${d.id}:axis:${i}`;
         const prev = prevValues[key];
-        const moved = prev !== undefined && Math.abs(v - prev) > AXIS_LIVE_DELTA;
-        nextStreaks[key] = moved ? (prevStreaks[key] ?? 0) + 1 : 0;
+        if (prev !== undefined && Math.abs(v - prev) > AXIS_LIVE_DELTA) {
+          liveUntil[key] = now + AXIS_LIVE_DECAY_MS;
+        }
         nextValues[key] = v;
       });
     }
     prevAxisValuesRef.current = nextValues;
-    axisLiveStreakRef.current = nextStreaks;
   }, [devices]);
 
   function isAxisLive(key) {
-    return (axisLiveStreakRef.current[key] ?? 0) >= AXIS_LIVE_STREAK;
+    return Date.now() < (axisLiveUntilRef.current[key] ?? 0);
   }
 
   function selectAxis(d, i) {
@@ -215,7 +219,7 @@ export default function InputPicker({ devices, selectedInputKey, onSelect, bound
                   </button>
                 </p>
               ) : (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,5.5rem))] gap-1.5">
                   {axisItems.map((item) => (
                     <InputChip
                       key={item.key}
@@ -241,7 +245,7 @@ export default function InputPicker({ devices, selectedInputKey, onSelect, bound
                   </button>
                 </p>
               ) : (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,5.5rem))] gap-1.5">
                   {buttonItems.map((item) => (
                     <InputChip
                       key={item.key}
@@ -275,7 +279,7 @@ function InputChip({ label, active, bound, isShift, live, onClick }) {
       title={isShift ? `${label} is your Shift key` : undefined}
       animate={live ? { scale: 1.08 } : { scale: 1 }}
       transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-      className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+      className={`flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
         live
           ? 'border border-mim-accent bg-mim-accent/25 text-white shadow-[0_0_12px_rgba(var(--color-mim-accent-rgb),0.6)]'
           : active

@@ -80,6 +80,17 @@ export function compileAction(action) {
       // outputIndex is 0-based and always targets this same mapping slot's
       // own vJoy device, cross-slot routing isn't exposed in the UI yet.
       return { kind: 'terminal', outputIndex: action.config?.outputIndex };
+    case 'tempo':
+      // Button-only: a brief press ("tap") and a press held past thresholdMs
+      // ("hold") land on two different vJoy buttons. Unlike mapToVjoy this
+      // owns its own output placement entirely (see tick()'s tempo handling
+      // in Mapping.jsx), it never falls back to positional forwarding.
+      return {
+        kind: 'tempo',
+        thresholdMs: action.config?.thresholdMs ?? 250,
+        tapOutputIndex: action.config?.tapOutputIndex,
+        holdOutputIndex: action.config?.holdOutputIndex
+      };
     case 'changeMode':
       return {
         kind: 'event',

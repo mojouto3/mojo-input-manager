@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X, Gamepad2 } from 'lucide-react';
+
+const mim = typeof window !== 'undefined' ? window.mim : undefined;
 import Select from '../Select';
 import Toggle from '../Toggle';
 import SegmentedControl from '../SegmentedControl';
@@ -69,20 +71,78 @@ function ShapeControl({ action, layoutId, onChange }) {
 // in Mapping.jsx, this is that same ceiling for buttons).
 const VJOY_BUTTON_OPTIONS = Array.from({ length: 32 }, (_, i) => ({ value: i, label: `vJoy Button ${i + 1}` }));
 
-// Button-only: which vJoy button it presses, browsed the same dropdown way
-// the trigger picker in a condition already works, not a stepper.
-function ButtonOutputControl({ action, onChange }) {
-  const outputIndex = action?.config?.outputIndex ?? 0;
+const BUTTON_TYPES = [
+  { value: 'mapToVjoy', label: 'Single Press' },
+  { value: 'tempo', label: 'Tap / Hold' }
+];
+
+function defaultButtonAction(type) {
+  return type === 'tempo'
+    ? { type: 'tempo', config: { thresholdMs: 250, tapOutputIndex: 0, holdOutputIndex: 1 } }
+    : { type: 'mapToVjoy', config: { outputIndex: 0 } };
+}
+
+// Button-only. Either a single vJoy button it presses (browsed the same
+// dropdown way the trigger picker in a condition already works), or a
+// Tempo: a quick tap and a press held past a threshold land on two
+// different vJoy buttons, still described as one sentence, not a separate
+// menu, since Tempo is just a different flavor of "what this button does".
+function ButtonControl({ action, layoutId, onChange }) {
+  const type = action?.type === 'tempo' ? 'tempo' : 'mapToVjoy';
+  const config = action?.config ?? {};
+
   return (
-    <div className="flex items-center gap-2 text-sm text-mim-muted">
-      <span>presses</span>
-      <Select value={outputIndex} onChange={(v) => onChange({ type: 'mapToVjoy', config: { outputIndex: Number(v) } })} options={VJOY_BUTTON_OPTIONS} />
+    <div className="flex flex-wrap items-center gap-3">
+      <SegmentedControl layoutId={layoutId} options={BUTTON_TYPES} value={type} onChange={(t) => onChange(defaultButtonAction(t))} />
+      {type === 'mapToVjoy' && (
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="text-sm text-mim-muted">presses</span>
+          <Select
+            value={config.outputIndex ?? 0}
+            onChange={(v) => onChange({ type: 'mapToVjoy', config: { outputIndex: Number(v) } })}
+            options={VJOY_BUTTON_OPTIONS}
+          />
+        </span>
+      )}
+      {type === 'tempo' && (
+        <>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="text-sm text-mim-muted">tap presses</span>
+            <Select
+              value={config.tapOutputIndex ?? 0}
+              onChange={(v) => onChange({ type: 'tempo', config: { ...config, tapOutputIndex: Number(v) } })}
+              options={VJOY_BUTTON_OPTIONS}
+            />
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="text-sm text-mim-muted">holding presses</span>
+            <Select
+              value={config.holdOutputIndex ?? 1}
+              onChange={(v) => onChange({ type: 'tempo', config: { ...config, holdOutputIndex: Number(v) } })}
+              options={VJOY_BUTTON_OPTIONS}
+            />
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="text-sm text-mim-muted">after</span>
+            <input
+              type="range"
+              min="100"
+              max="800"
+              step="50"
+              value={config.thresholdMs ?? 250}
+              onChange={(e) => onChange({ type: 'tempo', config: { ...config, thresholdMs: Number(e.target.value) } })}
+              className="w-24 accent-mim-accent"
+            />
+            <span className="w-14 shrink-0 text-right text-xs text-mim-muted">{config.thresholdMs ?? 250}ms</span>
+          </span>
+        </>
+      )}
     </div>
   );
 }
 
 function ActionControl({ kind, action, layoutId, onChange }) {
-  return kind === 'button' ? <ButtonOutputControl action={action} onChange={onChange} /> : <ShapeControl action={action} layoutId={layoutId} onChange={onChange} />;
+  return kind === 'button' ? <ButtonControl action={action} layoutId={layoutId} onChange={onChange} /> : <ShapeControl action={action} layoutId={layoutId} onChange={onChange} />;
 }
 
 // Everything a user sees about this input's behavior, in plain sentences:
@@ -136,9 +196,17 @@ export default function RuleCard({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18 }}
-        className="rules-header"
+        className="rules-header flex items-center justify-between gap-3"
       >
         <h3 className="text-sm font-semibold text-white">{inputLabel}</h3>
+        <button
+          onClick={() => mim?.system?.openGameControllers()}
+          title="Open Windows' Game Controllers list to watch the live vJoy output"
+          className="glass-surface flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-mim-muted transition-colors hover:text-white"
+        >
+          <Gamepad2 size={12} />
+          Test in Windows
+        </button>
       </motion.div>
 
       {inputKind === 'button' && (
@@ -150,8 +218,8 @@ export default function RuleCard({
         </motion.div>
       )}
 
-      <motion.div layout className="flex flex-wrap items-center gap-3 rounded-xl border border-mim-border bg-mim-surface-light/40 p-3">
-        <span className="shrink-0 text-sm text-mim-muted">Normally,</span>
+      <motion.div layout className="flex flex-wrap items-start gap-3 rounded-xl border border-mim-border bg-mim-surface-light/40 p-3">
+        <span className="shrink-0 pt-1.5 text-sm text-mim-muted">Normally,</span>
         <AnimatePresence mode="wait" initial={false}>
           {rule.base ? (
             <motion.div
@@ -198,8 +266,8 @@ export default function RuleCard({
             transition={{ duration: 0.18 }}
             className="overflow-hidden"
           >
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-amber-500/30 bg-amber-500/[0.06] p-3">
-              <span className="shrink-0 text-sm text-mim-muted">Shift version</span>
+            <div className="flex flex-wrap items-start gap-3 rounded-xl border border-dashed border-amber-500/30 bg-amber-500/[0.06] p-3">
+              <span className="shrink-0 pt-1.5 text-sm text-mim-muted">Shift version</span>
               <Toggle checked={Boolean(shiftCondition)} onChange={toggleShift} />
               <AnimatePresence initial={false}>
                 {shiftCondition && (
@@ -229,12 +297,12 @@ export default function RuleCard({
             transition={{ duration: 0.18 }}
             className="overflow-hidden"
           >
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-amber-500/30 bg-amber-500/[0.06] p-3">
-              <span className="shrink-0 text-sm text-mim-muted">While holding</span>
+            <div className="flex flex-wrap items-start gap-3 rounded-xl border border-dashed border-amber-500/30 bg-amber-500/[0.06] p-3">
+              <span className="shrink-0 pt-1.5 text-sm text-mim-muted">While holding</span>
               <span className="shrink-0 rounded-full bg-white/8 px-3 py-1 text-xs font-semibold text-white">{describeInputKey(devices, c.triggerKey)}</span>
-              <span className="shrink-0 text-sm text-mim-muted">instead,</span>
+              <span className="shrink-0 pt-1.5 text-sm text-mim-muted">instead,</span>
               <ActionControl kind={inputKind} action={c.action} layoutId={`cond-${c.triggerModeId}-${inputKey}`} onChange={(next) => onSetCondition(c.triggerKey, next)} />
-              <button onClick={() => onRemoveCondition(c.triggerModeId)} title="Remove this condition" className="ml-auto shrink-0 text-mim-muted transition-colors hover:text-red-400">
+              <button onClick={() => onRemoveCondition(c.triggerModeId)} title="Remove this condition" className="ml-auto shrink-0 pt-1 text-mim-muted transition-colors hover:text-red-400">
                 <X size={14} />
               </button>
             </div>

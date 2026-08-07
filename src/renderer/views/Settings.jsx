@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Palette, Info, RefreshCw, Download, Upload, Power } from 'lucide-react';
 import Card from '../components/Card';
 import Toggle from '../components/Toggle';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { getTheme, setTheme } from '../theme';
 
 const mim = typeof window !== 'undefined' ? window.mim : undefined;
@@ -29,6 +30,7 @@ export default function Settings() {
   const [updateStatus, setUpdateStatus] = useState({ status: 'idle' });
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNotice, setBackupNotice] = useState(null);
+  const [pendingImport, setPendingImport] = useState(null);
   const [launchAtStartup, setLaunchAtStartupState] = useState(false);
 
   useEffect(() => {
@@ -63,10 +65,25 @@ export default function Settings() {
   async function handleImport() {
     setBackupBusy(true);
     setBackupNotice(null);
-    const result = await mim?.backup?.import();
+    const result = await mim?.backup?.pickImportFile();
+    if (result?.ok) {
+      // Hold onto the parsed file and ask in-app instead of a native message
+      // box, applying it only happens once the user confirms below.
+      setPendingImport(result.data);
+    } else if (!result?.cancelled) {
+      setBackupNotice({ type: 'error', text: result?.error ?? 'Import failed.' });
+    }
+    setBackupBusy(false);
+  }
+
+  async function confirmImport() {
+    const data = pendingImport;
+    setPendingImport(null);
+    setBackupBusy(true);
+    const result = await mim?.backup?.applyImport(data);
     if (result?.ok) {
       setBackupNotice({ type: 'success', text: 'Profiles imported. Restart MIM to see them everywhere.' });
-    } else if (!result?.cancelled) {
+    } else {
       setBackupNotice({ type: 'error', text: result?.error ?? 'Import failed.' });
     }
     setBackupBusy(false);
@@ -190,6 +207,19 @@ export default function Settings() {
           </motion.button>
         </div>
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(pendingImport)}
+        title="Import MIM Profiles"
+        message={
+          pendingImport &&
+          `Import ${pendingImport.deviceFilteringProfiles.length} device filtering profile(s), ${pendingImport.mappingProfiles.length} mapping(s), and ${(pendingImport.gameProfiles ?? []).length} game profile(s)?`
+        }
+        detail="This replaces your current saved profiles and mappings. This cannot be undone."
+        confirmLabel="Import"
+        onConfirm={confirmImport}
+        onCancel={() => setPendingImport(null)}
+      />
     </div>
   );
 }
