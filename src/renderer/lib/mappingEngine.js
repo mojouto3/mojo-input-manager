@@ -66,6 +66,20 @@ export function sanitizeModes(modes) {
   });
 }
 
+// A Macro step is valid if it's a wait, or a press/release with a target
+// the runtime actually knows how to act on: 'vjoy' (the default, backward
+// compatible with steps saved before keyboard/mouse targets existed),
+// 'key', or 'mouse'.
+function isValidMacroStep(s) {
+  if (!s) return false;
+  if (s.type === 'wait') return Number.isFinite(s.ms);
+  const target = s.target ?? 'vjoy';
+  if (target === 'vjoy') return Number.isInteger(s.outputIndex);
+  if (target === 'key') return Number.isInteger(s.keyCode);
+  if (target === 'mouse') return typeof s.mouseButton === 'string';
+  return false;
+}
+
 // Turns one library action node into an executable step. Returns null for an
 // unrecognized type (future action, or a hand-edited/corrupted profile) so
 // the caller can silently skip it instead of crashing the tick loop.
@@ -93,18 +107,18 @@ export function compileAction(action) {
       };
     case 'macro':
       // Button-only: pressing the physical button plays a fixed sequence of
-      // "press vJoy button", "release vJoy button", and "wait" steps over
-      // time, instead of just asserting one output for as long as it's held.
-      // Owns its own output placement entirely, like Tempo, so it never
-      // falls back to positional forwarding, and every output index any step
-      // references is reserved up front (see tick()'s pre-scan in
-      // Mapping.jsx) even before the macro has ever played, since it will
-      // eventually drive that slot.
+      // press/release/wait steps over time, instead of just asserting one
+      // output for as long as it's held. Each press/release step targets
+      // either a vJoy button (owns its own output placement, like Tempo, so
+      // it never falls back to positional forwarding, and every vJoy index
+      // any step references is reserved up front, see tick()'s pre-scan in
+      // Mapping.jsx, even before the macro has ever played) or a real
+      // keyboard key / mouse button via Windows' keybd_event/mouse_event
+      // (src/main/inputInterface.js), a one-shot OS-level side effect rather
+      // than a vJoy slot the tick loop needs to keep re-asserting.
       return {
         kind: 'macro',
-        steps: Array.isArray(action.config?.steps)
-          ? action.config.steps.filter((s) => s && (s.type === 'wait' ? Number.isFinite(s.ms) : Number.isInteger(s.outputIndex)))
-          : []
+        steps: Array.isArray(action.config?.steps) ? action.config.steps.filter(isValidMacroStep) : []
       };
     case 'hatButtons':
       // Axis-only: some hardware reports a 4-way hat as a single axis with a

@@ -8,6 +8,7 @@ import Toggle from '../Toggle';
 import SegmentedControl from '../SegmentedControl';
 import ShapePreview from './ShapePreview';
 import { listButtons, describeInputKey, parseInputKey } from '../../lib/inputKeys';
+import { KEY_OPTIONS, MOUSE_BUTTON_OPTIONS } from '../../lib/keyCodes';
 
 const SHAPE_TYPES = [
   { value: 'responseCurve', label: 'Response Curve' },
@@ -294,14 +295,26 @@ const MACRO_STEP_TYPES = [
   { value: 'wait', label: 'Wait' }
 ];
 
-function defaultMacroStep(type) {
-  return type === 'wait' ? { type: 'wait', ms: 100 } : { type, outputIndex: 0 };
+const MACRO_TARGET_TYPES = [
+  { value: 'vjoy', label: 'vJoy Button' },
+  { value: 'key', label: 'Keyboard Key' },
+  { value: 'mouse', label: 'Mouse Button' }
+];
+
+function defaultMacroStep(type, target = 'vjoy') {
+  if (type === 'wait') return { type: 'wait', ms: 100 };
+  if (target === 'key') return { type, target, keyCode: KEY_OPTIONS[0].value };
+  if (target === 'mouse') return { type, target, mouseButton: 'left' };
+  return { type, target: 'vjoy', outputIndex: 0 };
 }
 
-// A fixed sequence of "press vJoy button", "release vJoy button", and "wait"
-// steps, played from the top every time the physical button is pressed. No
-// branching or looping, matching the same "list of steps, not a node graph"
-// scoping every other action in this file already sticks to.
+// A fixed sequence of press/release/wait steps, played from the top every
+// time the physical button is pressed. No branching or looping, matching
+// the same "list of steps, not a node graph" scoping every other action in
+// this file already sticks to. A press/release step can target a vJoy
+// button, a real keyboard key, or a real mouse button (see
+// src/main/inputInterface.js), the live "On" indicator only applies to vJoy
+// targets, it's the only one the tick loop keeps state on to compare against.
 function MacroControl({ config, onChange, activeOutputs }) {
   const steps = Array.isArray(config.steps) ? config.steps : [];
   const active = new Set(activeOutputs ?? []);
@@ -310,7 +323,10 @@ function MacroControl({ config, onChange, activeOutputs }) {
     onChange({ type: 'macro', config: { steps: next } });
   }
   function setStepType(i, type) {
-    setSteps(steps.map((s, idx) => (idx === i ? defaultMacroStep(type) : s)));
+    setSteps(steps.map((s, idx) => (idx === i ? defaultMacroStep(type, s.target) : s)));
+  }
+  function setStepTarget(i, target) {
+    setSteps(steps.map((s, idx) => (idx === i ? defaultMacroStep(s.type, target) : s)));
   }
   function updateStep(i, patch) {
     setSteps(steps.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
@@ -322,43 +338,67 @@ function MacroControl({ config, onChange, activeOutputs }) {
   return (
     <div className="flex w-full flex-col gap-2">
       {steps.length === 0 && <p className="text-xs text-mim-muted">No steps yet, add one below.</p>}
-      {steps.map((step, i) => (
-        <div key={i} className="flex flex-wrap items-center gap-2">
-          <span className="w-5 shrink-0 text-right text-xs text-mim-muted">{i + 1}.</span>
-          <Select value={step.type} onChange={(t) => setStepType(i, t)} options={MACRO_STEP_TYPES} className="w-24 shrink-0" />
-          {step.type === 'wait' ? (
-            <>
-              <input
-                type="range"
-                min="10"
-                max="2000"
-                step="10"
-                value={step.ms ?? 100}
-                onChange={(e) => updateStep(i, { ms: Number(e.target.value) })}
-                className="w-28 shrink-0 accent-mim-accent"
-              />
-              <span className="w-14 shrink-0 text-xs text-mim-muted">{step.ms ?? 100}ms</span>
-            </>
-          ) : (
-            <>
-              <Select
-                value={step.outputIndex ?? 0}
-                onChange={(v) => updateStep(i, { outputIndex: Number(v) })}
-                options={VJOY_BUTTON_OPTIONS}
-                className="w-36 shrink-0"
-              />
-              {active.has(step.outputIndex) && (
-                <span className="shrink-0 rounded-full bg-mim-accent/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-mim-accent">
-                  On
-                </span>
-              )}
-            </>
-          )}
-          <button onClick={() => removeStep(i)} title="Remove this step" className="ml-auto shrink-0 text-mim-muted transition-colors hover:text-red-400">
-            <X size={14} />
-          </button>
-        </div>
-      ))}
+      {steps.map((step, i) => {
+        const target = step.target ?? 'vjoy';
+        return (
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <span className="w-5 shrink-0 text-right text-xs text-mim-muted">{i + 1}.</span>
+            <Select value={step.type} onChange={(t) => setStepType(i, t)} options={MACRO_STEP_TYPES} className="w-24 shrink-0" />
+            {step.type === 'wait' ? (
+              <>
+                <input
+                  type="range"
+                  min="10"
+                  max="2000"
+                  step="10"
+                  value={step.ms ?? 100}
+                  onChange={(e) => updateStep(i, { ms: Number(e.target.value) })}
+                  className="w-28 shrink-0 accent-mim-accent"
+                />
+                <span className="w-14 shrink-0 text-xs text-mim-muted">{step.ms ?? 100}ms</span>
+              </>
+            ) : (
+              <>
+                <Select value={target} onChange={(t) => setStepTarget(i, t)} options={MACRO_TARGET_TYPES} className="w-32 shrink-0" />
+                {target === 'vjoy' && (
+                  <>
+                    <Select
+                      value={step.outputIndex ?? 0}
+                      onChange={(v) => updateStep(i, { outputIndex: Number(v) })}
+                      options={VJOY_BUTTON_OPTIONS}
+                      className="w-36 shrink-0"
+                    />
+                    {active.has(step.outputIndex) && (
+                      <span className="shrink-0 rounded-full bg-mim-accent/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-mim-accent">
+                        On
+                      </span>
+                    )}
+                  </>
+                )}
+                {target === 'key' && (
+                  <Select
+                    value={step.keyCode ?? KEY_OPTIONS[0].value}
+                    onChange={(v) => updateStep(i, { keyCode: Number(v) })}
+                    options={KEY_OPTIONS}
+                    className="w-28 shrink-0"
+                  />
+                )}
+                {target === 'mouse' && (
+                  <Select
+                    value={step.mouseButton ?? 'left'}
+                    onChange={(v) => updateStep(i, { mouseButton: v })}
+                    options={MOUSE_BUTTON_OPTIONS}
+                    className="w-32 shrink-0"
+                  />
+                )}
+              </>
+            )}
+            <button onClick={() => removeStep(i)} title="Remove this step" className="ml-auto shrink-0 text-mim-muted transition-colors hover:text-red-400">
+              <X size={14} />
+            </button>
+          </div>
+        );
+      })}
       <button
         onClick={() => setSteps([...steps, defaultMacroStep('press')])}
         className="w-fit shrink-0 rounded-full bg-mim-accent/15 px-3 py-1.5 text-xs font-semibold text-mim-accent"
