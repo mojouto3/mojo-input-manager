@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Upload } from 'lucide-react';
 import Card from '../Card';
 import InputPicker from './InputPicker';
 import RuleCard from './RuleCard';
+import GremlinImportDialog from './GremlinImportDialog';
 import { getRuleFor, setBaseAction, clearBaseAction, setConditionAction, clearCondition } from '../../lib/mappingEngine';
 
 const mim = typeof window !== 'undefined' ? window.mim : undefined;
@@ -16,6 +18,7 @@ const mim = typeof window !== 'undefined' ? window.mim : undefined;
 export default function AdvancedMappingTab({ profile, devices, activeOutputs, onSaved }) {
   const [setup, setSetup] = useState(profile);
   const [selectedInput, setSelectedInput] = useState(null);
+  const [showGremlinImport, setShowGremlinImport] = useState(false);
 
   useEffect(() => {
     setSetup(profile);
@@ -53,6 +56,16 @@ export default function AdvancedMappingTab({ profile, devices, activeOutputs, on
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowGremlinImport(true)}
+          className="glass-surface flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-mim-muted transition-colors hover:text-white"
+        >
+          <Upload size={12} />
+          Import from Joystick Gremlin...
+        </button>
+      </div>
+
       <Card hover={false} className="p-4">
         <InputPicker
           devices={devices}
@@ -93,6 +106,14 @@ export default function AdvancedMappingTab({ profile, devices, activeOutputs, on
           </motion.div>
         )}
       </AnimatePresence>
+
+      <GremlinImportDialog
+        open={showGremlinImport}
+        devices={devices}
+        setup={setup}
+        onImport={(nextSetup) => persist(nextSetup)}
+        onClose={() => setShowGremlinImport(false)}
+      />
     </div>
   );
 }
