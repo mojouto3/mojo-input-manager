@@ -51,6 +51,15 @@ function emptySlot() {
   return { id: makeSlotId(), selectedIds: [], targetDeviceId: '', isLive: false, liveError: null };
 }
 
+// Releases whatever real keyboard keys / mouse buttons a Macro's playback
+// state still has held down, a vJoy output needs no equivalent cleanup (see
+// the tick() comment where this is called from).
+function releaseMacroSideEffects(state) {
+  if (!state) return;
+  for (const keyCode of state.downKeys ?? []) mim.input.sendKey(keyCode, false);
+  for (const button of state.downMouse ?? []) mim.input.sendMouseButton(button, false);
+}
+
 export default function Mapping() {
   const [devices, setDevices] = useState([]);
   const [vjoyDevices, setVjoyDevices] = useState([]);
@@ -289,7 +298,16 @@ export default function Mapping() {
                   }
                 } else if (step.kind === 'macro') {
                   macroHandled = true;
-                  if (edge) macroStateRef.current.set(inputKey, { stepIndex: 0, nextAt: now, held: new Set() });
+                  if (edge) {
+                    // A re-trigger before the previous run finished must not
+                    // leave a real keyboard key or mouse button stuck down
+                    // system-wide (vJoy outputs don't have this problem,
+                    // buttonsOut is rebuilt from scratch every tick, so an
+                    // abandoned `held` entry just naturally reads as
+                    // released next tick).
+                    releaseMacroSideEffects(macroStateRef.current.get(inputKey));
+                    macroStateRef.current.set(inputKey, { stepIndex: 0, nextAt: now, held: new Set(), downKeys: new Set(), downMouse: new Set() });
+                  }
                   const state = macroStateRef.current.get(inputKey);
                   if (state) {
                     // A press/release step fires immediately (nextAt stays
@@ -298,14 +316,23 @@ export default function Mapping() {
                     // delay before the loop stops advancing.
                     while (state.stepIndex < step.steps.length && now >= state.nextAt) {
                       const s = step.steps[state.stepIndex];
-                      if (s.type === 'press') state.held.add(s.outputIndex);
-                      else if (s.type === 'release') state.held.delete(s.outputIndex);
-                      else if (s.type === 'wait') state.nextAt = now + s.ms;
+                      const target = s.target ?? 'vjoy';
+                      if (s.type === 'press') {
+                        if (target === 'vjoy') state.held.add(s.outputIndex);
+                        else if (target === 'key') { state.downKeys.add(s.keyCode); mim.input.sendKey(s.keyCode, true); }
+                        else if (target === 'mouse') { state.downMouse.add(s.mouseButton); mim.input.sendMouseButton(s.mouseButton, true); }
+                      } else if (s.type === 'release') {
+                        if (target === 'vjoy') state.held.delete(s.outputIndex);
+                        else if (target === 'key') { state.downKeys.delete(s.keyCode); mim.input.sendKey(s.keyCode, false); }
+                        else if (target === 'mouse') { state.downMouse.delete(s.mouseButton); mim.input.sendMouseButton(s.mouseButton, false); }
+                      } else if (s.type === 'wait') {
+                        state.nextAt = now + s.ms;
+                      }
                       state.stepIndex += 1;
                     }
                     for (const idx of state.held) buttonsOut[idx] = true;
                     if (state.held.size > 0) tickActiveOutputs[inputKey] = [...state.held];
-                    if (state.stepIndex >= step.steps.length && state.held.size === 0) {
+                    if (state.stepIndex >= step.steps.length && state.held.size === 0 && state.downKeys.size === 0 && state.downMouse.size === 0) {
                       macroStateRef.current.delete(inputKey);
                     }
                   }
@@ -376,6 +403,7 @@ export default function Mapping() {
       for (const slot of mappingsRef.current) {
         if (slot.isLive) mim?.mapping?.stop(Number(slot.targetDeviceId));
       }
+      for (const state of macroStateRef.current.values()) releaseMacroSideEffects(state);
     };
   }, []);
 

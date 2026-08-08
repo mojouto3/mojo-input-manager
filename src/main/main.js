@@ -5,6 +5,7 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const vjoy = require('./vjoy');
 const vjoyInterface = require('./vjoyInterface');
+const inputInterface = require('./inputInterface');
 const hidhide = require('./hidhide');
 const profiles = require('./profiles');
 const mappingProfiles = require('./mappingProfiles');
@@ -217,6 +218,17 @@ ipcMain.on('mapping:feed', (event, { deviceId, axes, buttons }) => {
 ipcMain.handle('mapping:stop', (event, deviceId) => {
   stopMapping(deviceId);
   return { ok: true };
+});
+
+// Fire-and-forget, same as mapping:feed, a Macro step firing a key/mouse
+// press is edge-triggered from the renderer's own tick loop, an ack round
+// trip here would just add latency for no benefit.
+ipcMain.on('input:key', (event, { vkCode, down }) => {
+  inputInterface.sendKey(vkCode, down);
+});
+
+ipcMain.on('input:mouse-button', (event, { button, down }) => {
+  inputInterface.sendMouseButton(button, down);
 });
 
 ipcMain.handle('hidhide:get-devices', async () => {

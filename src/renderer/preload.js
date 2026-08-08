@@ -78,5 +78,9 @@ contextBridge.exposeInMainWorld('mim', {
   },
   gremlin: {
     pickImportFile: () => ipcRenderer.invoke('gremlin:pick-import-file')
+  },
+  input: {
+    sendKey: (vkCode, down) => ipcRenderer.send('input:key', { vkCode, down }),
+    sendMouseButton: (button, down) => ipcRenderer.send('input:mouse-button', { button, down })
   }
 });
