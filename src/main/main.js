@@ -445,6 +445,28 @@ ipcMain.handle('backup:export', async (event) => {
 // "are you sure, this replaces everything" confirmation can be a normal
 // in-app modal styled like the rest of MIM instead of a native OS message
 // box that looked out of place next to a fully custom UI.
+// Only reads the raw file and hands the text back, actual XML parsing happens
+// in the renderer via its native DOMParser, no XML library needed as a
+// dependency here. Joystick Gremlin profile filenames often contain
+// bracketed tags (e.g. "[ENH][NXT]"), the file filter is by extension only.
+ipcMain.handle('gremlin:pick-import-file', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const picked = await dialog.showOpenDialog(win, {
+    title: 'Import Joystick Gremlin Profile',
+    properties: ['openFile'],
+    filters: [{ name: 'Joystick Gremlin Profile', extensions: ['xml'] }]
+  });
+  if (picked.canceled || picked.filePaths.length === 0) {
+    return { ok: false, cancelled: true };
+  }
+  try {
+    const text = fs.readFileSync(picked.filePaths[0], 'utf8');
+    return { ok: true, text, fileName: path.basename(picked.filePaths[0]) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('backup:pick-import-file', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const picked = await dialog.showOpenDialog(win, {

@@ -75,5 +75,8 @@ contextBridge.exposeInMainWorld('mim', {
     export: () => ipcRenderer.invoke('backup:export'),
     pickImportFile: () => ipcRenderer.invoke('backup:pick-import-file'),
     applyImport: (data) => ipcRenderer.invoke('backup:apply-import', data)
+  },
+  gremlin: {
+    pickImportFile: () => ipcRenderer.invoke('gremlin:pick-import-file')
   }
 });
