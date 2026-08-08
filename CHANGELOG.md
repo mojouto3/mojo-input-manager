@@ -2,6 +2,12 @@
 
 All notable changes to Mojo Input Manager are documented here.
 
+## [1.3.0] - 2026-08-08
+
+### Added
+- **Import from Joystick Gremlin**: bring in an existing Gremlin `.xml` profile's button/axis remaps, Tempo containers, Macros, and Shift-style "while holding" conditions. Anything without a MIM equivalent (custom response curves, mouse-movement output, keyboard steps in a Macro, mode cycling, text-to-speech) is reported after import instead of silently dropped
+- **Macro** steps can now target a real keyboard key or mouse button, not just a vJoy button
+
 ## [1.2.0] - 2026-08-07
 
 ### Added
